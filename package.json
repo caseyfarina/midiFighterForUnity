@@ -1,0 +1,26 @@
+{
+  "name": "com.caseyfarina.midifighter64",
+  "version": "1.0.0",
+  "displayName": "Midi Fighter 64 for Unity",
+  "description": "MIDI input bridge for the DJ Tech Tools Midi Fighter 64 grid controller. Converts raw MIDI note events into logical 8x8 grid coordinates and routes them as typed C# events. Built on the Unity Input System and Minis MIDI package.",
+  "unity": "6000.0",
+  "documentationUrl": "https://github.com/caseyfarina/midiFighterForUnity#readme",
+  "changelogUrl": "https://github.com/caseyfarina/midiFighterForUnity/blob/main/CHANGELOG.md",
+  "license": "MIT",
+  "dependencies": {
+    "com.unity.inputsystem": "1.7.0",
+    "jp.keijiro.minis": "1.5.1"
+  },
+  "keywords": [
+    "midi",
+    "midifighter",
+    "controller",
+    "input",
+    "vj",
+    "dj"
+  ],
+  "author": {
+    "name": "Casey Farina",
+    "url": "https://github.com/caseyfarina"
+  }
+}

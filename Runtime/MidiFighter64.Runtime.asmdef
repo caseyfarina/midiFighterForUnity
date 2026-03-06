@@ -1,0 +1,17 @@
+{
+  "name": "MidiFighter64.Runtime",
+  "rootNamespace": "MidiFighter64",
+  "references": [
+    "Unity.InputSystem",
+    "Minis"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
