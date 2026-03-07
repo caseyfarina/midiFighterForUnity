@@ -40,8 +40,17 @@ namespace MidiFighter64
         /// <summary>A Mute button was pressed or released. Args: channel (1–8), isNoteOn.</summary>
         public static event Action<int, bool> OnMute;
 
+        /// <summary>
+        /// A Mute button in Solo mode was pressed or released. Args: channel (1–8), isNoteOn.
+        /// The hardware SOLO toggle causes the Mute row to emit a different note set.
+        /// </summary>
+        public static event Action<int, bool> OnSolo;
+
         /// <summary>A Rec Arm button was pressed or released. Args: channel (1–8), isNoteOn.</summary>
         public static event Action<int, bool> OnRecArm;
+
+        /// <summary>A Rec Arm button in shifted mode was pressed or released. Args: channel (1–8), isNoteOn.</summary>
+        public static event Action<int, bool> OnRecArmShifted;
 
         /// <summary>The Bank Left button was pressed.</summary>
         public static event Action OnBankLeft;
@@ -112,8 +121,10 @@ namespace MidiFighter64
                 OnButtonRaw?.Invoke(button, isNoteOn);
                 switch (button.type)
                 {
-                    case MidiMixButton.Mute:   OnMute?.Invoke(button.channel, isNoteOn);   break;
-                    case MidiMixButton.RecArm: OnRecArm?.Invoke(button.channel, isNoteOn); break;
+                    case MidiMixButton.Mute:          OnMute?.Invoke(button.channel, isNoteOn);          break;
+                    case MidiMixButton.Solo:          OnSolo?.Invoke(button.channel, isNoteOn);          break;
+                    case MidiMixButton.RecArm:        OnRecArm?.Invoke(button.channel, isNoteOn);        break;
+                    case MidiMixButton.RecArmShifted: OnRecArmShifted?.Invoke(button.channel, isNoteOn); break;
                 }
                 return;
             }

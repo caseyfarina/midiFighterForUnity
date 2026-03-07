@@ -6,7 +6,21 @@ namespace MidiFighter64
     /// Button type for the Akai MIDI Mix.
     /// Each channel strip has a Mute button and a Rec Arm button.
     /// </summary>
-    public enum MidiMixButton { Mute, RecArm }
+    public enum MidiMixButton
+    {
+        Mute,
+        /// <summary>
+        /// Same physical Mute buttons in Solo mode (SOLO toggle engaged on hardware).
+        /// The firmware emits a different note number set when this mode is active.
+        /// </summary>
+        Solo,
+        RecArm,
+        /// <summary>
+        /// Same physical Rec Arm buttons in shifted mode (base note + 32).
+        /// Activated by the Bank Left/Bank Right shift function.
+        /// </summary>
+        RecArmShifted,
+    }
 
     /// <summary>A knob on the Akai MIDI Mix (3 rows × 8 channels).</summary>
     public struct MixKnob
@@ -71,17 +85,29 @@ namespace MidiFighter64
         public static readonly int[] FaderCC = { 19, 23, 27, 31, 49, 53, 57, 61 };
 
         /// <summary>CC number for the master fader.</summary>
-        public const int MasterFaderCC = 62;
+        public const int MasterFaderCC = 127;
 
         // ------------------------------------------------------------------ //
         // Note numbers
         // ------------------------------------------------------------------ //
 
-        /// <summary>Note numbers for the 8 Mute buttons (0-based index).</summary>
+        /// <summary>Note numbers for the 8 Mute buttons in normal mode (0-based index).</summary>
         public static readonly int[] MuteNotes = { 1, 4, 7, 10, 13, 16, 19, 22 };
 
-        /// <summary>Note numbers for the 8 Rec Arm buttons (0-based index).</summary>
+        /// <summary>
+        /// Note numbers emitted by the 8 Mute buttons when the hardware SOLO toggle is engaged.
+        /// These are the same physical buttons as MuteNotes but the firmware sends a different
+        /// note set (base + 1) while Solo mode is active.
+        /// </summary>
+        public static readonly int[] SoloNotes = { 2, 5, 8, 11, 14, 17, 20, 23 };
+
+        /// <summary>Note numbers for the 8 Rec Arm buttons in normal mode (0-based index).</summary>
         public static readonly int[] RecArmNotes = { 3, 6, 9, 12, 15, 18, 21, 24 };
+
+        /// <summary>
+        /// Shifted Rec Arm note numbers (base + 32), active when the Bank shift function is used.
+        /// </summary>
+        public static readonly int[] RecArmShiftedNotes = { 35, 38, 41, 44, 47, 50, 53, 56 };
 
         /// <summary>Note number for the Bank Left button.</summary>
         public const int BankLeftNote  = 25;
@@ -115,10 +141,14 @@ namespace MidiFighter64
 
             for (int ch = 0; ch < CHANNEL_COUNT; ch++)
             {
-                int muteNote   = MuteNotes[ch];
-                int recArmNote = RecArmNotes[ch];
-                _buttonByNote[muteNote]   = new MixButton { channel = ch + 1, type = MidiMixButton.Mute,   noteNumber = muteNote };
-                _buttonByNote[recArmNote] = new MixButton { channel = ch + 1, type = MidiMixButton.RecArm, noteNumber = recArmNote };
+                int muteNote          = MuteNotes[ch];
+                int soloNote          = SoloNotes[ch];
+                int recArmNote        = RecArmNotes[ch];
+                int recArmShiftedNote = RecArmShiftedNotes[ch];
+                _buttonByNote[muteNote]          = new MixButton { channel = ch + 1, type = MidiMixButton.Mute,          noteNumber = muteNote };
+                _buttonByNote[soloNote]          = new MixButton { channel = ch + 1, type = MidiMixButton.Solo,          noteNumber = soloNote };
+                _buttonByNote[recArmNote]        = new MixButton { channel = ch + 1, type = MidiMixButton.RecArm,        noteNumber = recArmNote };
+                _buttonByNote[recArmShiftedNote] = new MixButton { channel = ch + 1, type = MidiMixButton.RecArmShifted, noteNumber = recArmShiftedNote };
             }
         }
 
