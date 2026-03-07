@@ -8,9 +8,7 @@ namespace MidiFighter64
         public int noteNumber;
 
         public bool IsValid => noteNumber >= MidiFighter64InputMap.NOTE_OFFSET
-                            && noteNumber < MidiFighter64InputMap.NOTE_OFFSET
-                                          + MidiFighter64InputMap.GRID_SIZE
-                                          * MidiFighter64InputMap.GRID_SIZE;
+                            && noteNumber <= MidiFighter64InputMap.NOTE_MAX;
 
         public override string ToString()
             => $"Grid[R{row},C{col}] note={noteNumber}";
