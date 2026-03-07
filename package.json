@@ -19,6 +19,13 @@
     "vj",
     "dj"
   ],
+  "samples": [
+    {
+      "displayName": "Test Scene",
+      "description": "Generates an 8x8 grid of spheres representing Midi Fighter 64 buttons. Pressing buttons highlights the corresponding sphere. A UI button plays an animated LED wave across the hardware and the on-screen grid.",
+      "path": "Samples~/TestScene"
+    }
+  ],
   "author": {
     "name": "Casey Farina",
     "url": "https://github.com/caseyfarina"

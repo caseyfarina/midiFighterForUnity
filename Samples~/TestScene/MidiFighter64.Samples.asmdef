@@ -1,0 +1,16 @@
+{
+    "name": "MidiFighter64.Samples",
+    "rootNamespace": "MidiFighter64.Samples",
+    "references": [
+        "MidiFighter64.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
