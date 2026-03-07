@@ -14,8 +14,9 @@ namespace MidiFighter64
     {
         public static MidiEventManager Instance { get; private set; }
 
-        public static event Action<int, float> OnNoteOn;   // noteNumber, velocity 0-1
-        public static event Action<int>        OnNoteOff;  // noteNumber
+        public static event Action<int, float> OnNoteOn;        // noteNumber, velocity 0-1
+        public static event Action<int>        OnNoteOff;       // noteNumber
+        public static event Action<int, float> OnControlChange; // controlNumber, value 0-1
 
         public string DeviceName { get; private set; } = "No MIDI Device";
 
@@ -57,8 +58,9 @@ namespace MidiFighter64
             {
                 if (device is not Minis.MidiDevice midi) continue;
 
-                midi.onWillNoteOn  += HandleNoteOn;
-                midi.onWillNoteOff += HandleNoteOff;
+                midi.onWillNoteOn       += HandleNoteOn;
+                midi.onWillNoteOff      += HandleNoteOff;
+                midi.onWillControlChange += HandleControlChange;
                 _devices.Add(midi);
 
                 DeviceName = device.description.product ?? device.displayName;
@@ -69,8 +71,9 @@ namespace MidiFighter64
         {
             foreach (var midi in _devices)
             {
-                midi.onWillNoteOn  -= HandleNoteOn;
-                midi.onWillNoteOff -= HandleNoteOff;
+                midi.onWillNoteOn       -= HandleNoteOn;
+                midi.onWillNoteOff      -= HandleNoteOff;
+                midi.onWillControlChange -= HandleControlChange;
             }
             _devices.Clear();
         }
@@ -80,5 +83,8 @@ namespace MidiFighter64
 
         static void HandleNoteOff(Minis.MidiNoteControl note)
             => OnNoteOff?.Invoke(note.noteNumber);
+
+        static void HandleControlChange(Minis.MidiValueControl control, float value)
+            => OnControlChange?.Invoke(control.controlNumber, value);
     }
 }
