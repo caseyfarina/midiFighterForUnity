@@ -1,0 +1,16 @@
+{
+    "name": "MidiTriggeredSpawner.Editor",
+    "rootNamespace": "",
+    "references": [
+        "MidiFighter64.Samples"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

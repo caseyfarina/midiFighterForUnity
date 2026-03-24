@@ -8,9 +8,7 @@ namespace MidiFighter64
         public int noteNumber;
 
         public bool IsValid => noteNumber >= MidiFighter64InputMap.NOTE_OFFSET
-                            && noteNumber < MidiFighter64InputMap.NOTE_OFFSET
-                                          + MidiFighter64InputMap.GRID_SIZE
-                                          * MidiFighter64InputMap.GRID_SIZE;
+                            && noteNumber <= MidiFighter64InputMap.NOTE_MAX;
 
         public override string ToString()
             => $"Grid[R{row},C{col}] note={noteNumber}";
@@ -29,16 +27,31 @@ namespace MidiFighter64
 
         public static GridButton FromNote(int noteNumber)
         {
-            int index       = noteNumber - NOTE_OFFSET;
-            int physicalRow = index / GRID_SIZE;           // 0 = bottom
-            int col         = (index % GRID_SIZE) + 1;
-            int row         = GRID_SIZE - physicalRow;     // invert: 1 = top
+            // The MF64 splits its 8x8 grid into two 4-column halves:
+            //   Left  (cols 1-4): notes 36-67, 4 per row, bottom to top
+            //   Right (cols 5-8): notes 68-99, 4 per row, bottom to top
+            int half, offset;
+            if (noteNumber < 68)
+            {
+                half   = 0;                         // left half
+                offset = noteNumber - 36;
+            }
+            else
+            {
+                half   = 1;                         // right half
+                offset = noteNumber - 68;
+            }
+
+            int physicalRow = offset / 4;           // 0 = bottom
+            int row         = GRID_SIZE - physicalRow; // invert: 1 = top
+            int col         = (offset % 4) + 1 + (half * 4);
+            int linearIndex = (row - 1) * GRID_SIZE + (col - 1);
 
             return new GridButton
             {
                 row         = row,
                 col         = col,
-                linearIndex = index,
+                linearIndex = linearIndex,
                 noteNumber  = noteNumber
             };
         }
