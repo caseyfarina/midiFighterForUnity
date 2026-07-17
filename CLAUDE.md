@@ -254,10 +254,50 @@ MidiFighterOutput.Instance.ledChannelIndex = 0; // 0=Blue 1=Purple 2=Red 3=White
 
 ---
 
-## Known Issues
+## Current Branch Status
 
-- **`GridButton.IsValid`** upper bound off-by-one vs `IsInRange()` on note 100 (unreachable from hardware).
-- `MidiFighterOutput` silently does nothing on macOS/Linux.
-- `CHANGELOG.md` and `package.json` version not bumped.
-- WinMM exclusive access: only one app can hold a MIDI port. Close DAWs before Play.
-- First MIDI event per channel is always lost (device created on first event, callback subscribed after).
+**Branch**: `feat/midimix-and-button-modes` (4 commits ahead of main)
+
+### Completed tasks (committed, awaiting Unity verification)
+
+| Task | Commit | Status |
+|------|--------|--------|
+| Task 1 — Split-half grid docs + corner tests | `65e2f15` | **Committed. Need Unity to generate `.meta` for `Tests/Editor/`, then run Test Runner to confirm 4 corner asserts pass.** |
+| Task 2 — Strip app-logic from Samples | `6fc98e6` | **Committed. Verify package compiles clean on fresh import (no Cinemachine/MiniBokeh refs).** |
+| Task 3 — Button/Toggle layer + 8×8 config editor | `667ef16` | **Committed. Need Unity to generate `.meta` for `Editor/` and 3 new Runtime scripts. Then create a MF64ButtonConfig asset and verify toggle vs button behaviour on hardware.** |
+| Task 4 — RtMidi output + corrected color model | `448a6a0` | **Committed. Hardware verify: toggle a pad → LED lights; toggle off → returns to Utility inactive color. Transcribe real Fig 2 velocity values into `MidiFighterColor`.** |
+
+### What to do after restarting
+
+1. Open the Unity project — Unity auto-generates `.meta` files for:
+   - `Tests/Editor/MidiFighter64.Tests.asmdef`
+   - `Tests/Editor/MidiFighter64InputMapTests.cs`
+   - `Editor/MidiFighter64.Editor.asmdef`
+   - `Editor/MidiFighter64ButtonConfigEditor.cs`
+   - `Runtime/MidiFighterButtonMode.cs`
+   - `Runtime/MidiFighter64ButtonConfig.cs`
+   - `Runtime/MidiFighterButtonRouter.cs`
+   - `Tests/` folder `.meta`
+   - `Editor/` folder `.meta`
+2. Commit those `.meta` files: `git add -A && git commit -m "meta: add Unity-generated .meta files for Tasks 1-4"`
+3. Run **Window → Test Runner → EditMode** — confirm `MidiFighter64InputMapTests` all pass.
+4. Test Task 3 on hardware: create a `MidiFighter64ButtonConfig` asset, check a few cells → verified as Toggle, unchecked as Button.
+5. Test Task 4 on hardware: verify toggle pads light their LED; toggle off clears it. Transcribe the real Fig 2 velocity values into `MidiFighterOutput.MidiFighterColor`.
+6. Continue with **Task 5** (test scene) and **Task 6** (package metadata + docs).
+
+### Remaining tasks
+
+- **Task 5** — Openable test scene (`MidiControllersTestScene.unity`) for MF64 + MIDI Mix with debug readout.
+  - Author scene in `Samples/TestScene/` (no tilde) first so Unity generates wiring metas, then rename to `Samples~/TestScene/`.
+- **Task 6** — Package metadata + docs + version 1.1.0.
+- **Task 7** (optional) — Hardening: first-event-lost, USB hub docs, MIDI Mix bank/shift note remapping.
+
+---
+
+## Known Issues (updated)
+
+- `GridButton.IsValid` and `IsInRange` are now aligned (both `<= NOTE_MAX`). No longer an issue.
+- `MidiFighterOutput` now uses RtMidi for cross-platform output (winmm removed). Confirm macOS/Linux with hardware.
+- `CHANGELOG.md` and `package.json` version not yet bumped to 1.1.0 (Task 6).
+- First MIDI event per channel is still lost (device created on first event, callback subscribed after) — Task 7.
+- `MidiFighterColor` velocity constants are placeholders — transcribe real values from MF64 User Guide Fig 2 / Utility after hardware test.
