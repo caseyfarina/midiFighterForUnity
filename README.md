@@ -70,19 +70,26 @@ void HandleGridButton(GridButton btn, bool isNoteOn) { }
 
 ### Grid Layout
 
-The Midi Fighter 64 is an 8x8 button grid sending MIDI notes 36-99.
+The Midi Fighter 64 is an 8×8 button grid sending MIDI notes 36–99.
+The grid uses a **split-half layout**: left half (cols 1–4) = notes 36–67,
+right half (cols 5–8) = notes 68–99, each half numbered 4 notes per row from
+bottom to top. Hardware-confirmed corners: top-left=64, top-right=99,
+bottom-left=36, bottom-right=71 (all Channel 3).
 
 ```
         Col1  Col2  Col3  Col4  Col5  Col6  Col7  Col8
-Row 1:  [92]  [93]  [94]  [95]  [96]  [97]  [98]  [99]   <- OnRow1
-Row 2:  [84]  [85]  [86]  [87]  [88]  [89]  [90]  [91]   <- OnGridPreset / OnGridRandomize
-Row 3:  [76]  [77]  [78]  [79]  [80]  [81]  [82]  [83]   <- OnGridPreset / OnGridRandomize
-Row 4:  [68]  [69]  [70]  [71]  [72]  [73]  [74]  [75]   <- OnGridPreset / OnGridRandomize
-Row 5:  [60]  [61]  [62]  [63]  [64]  [65]  [66]  [67]   <- OnRow5
-Row 6:  [52]  [53]  [54]  [55]  [56]  [57]  [58]  [59]   <- OnSlotToggle (slots 1-8)
-Row 7:  [44]  [45]  [46]  [47]  [48]  [49]  [50]  [51]   <- OnSlotToggle (slots 9-16)
-Row 8:  [36]  [37]  [38]  [39]  [40]  [41]  [42]  [43]   <- OnSlotToggle (slots 17-24)
+Row 1:  [ 64] [ 65] [ 66] [ 67] [ 96] [ 97] [ 98] [ 99]  <- OnRow1
+Row 2:  [ 60] [ 61] [ 62] [ 63] [ 92] [ 93] [ 94] [ 95]  <- OnGridPreset / OnGridRandomize
+Row 3:  [ 56] [ 57] [ 58] [ 59] [ 88] [ 89] [ 90] [ 91]  <- OnGridPreset / OnGridRandomize
+Row 4:  [ 52] [ 53] [ 54] [ 55] [ 84] [ 85] [ 86] [ 87]  <- OnGridPreset / OnGridRandomize
+Row 5:  [ 48] [ 49] [ 50] [ 51] [ 80] [ 81] [ 82] [ 83]  <- OnRow5
+Row 6:  [ 44] [ 45] [ 46] [ 47] [ 76] [ 77] [ 78] [ 79]  <- OnSlotToggle (slots 1-8)
+Row 7:  [ 40] [ 41] [ 42] [ 43] [ 72] [ 73] [ 74] [ 75]  <- OnSlotToggle (slots 9-16)
+Row 8:  [ 36] [ 37] [ 38] [ 39] [ 68] [ 69] [ 70] [ 71]  <- OnSlotToggle (slots 17-24)
 ```
+
+**Required Utility settings**: Bank 1 / MIDI Channel 3 / MIDI Type = Notes /
+Corner Button Bank Change = disabled.
 
 ### Custom Routing
 

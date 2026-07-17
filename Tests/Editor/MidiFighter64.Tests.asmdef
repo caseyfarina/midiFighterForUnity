@@ -1,0 +1,22 @@
+{
+  "name": "MidiFighter64.Tests",
+  "rootNamespace": "MidiFighter64.Tests",
+  "references": [
+    "MidiFighter64.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "noEngineReferences": false
+}
