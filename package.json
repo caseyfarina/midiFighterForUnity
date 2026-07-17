@@ -9,7 +9,7 @@
   "license": "MIT",
   "dependencies": {
     "com.unity.inputsystem": "1.7.0",
-    "jp.keijiro.minis": "1.5.1"
+    "jp.keijiro.minis": "1.3.2"
   },
   "keywords": [
     "midi",
