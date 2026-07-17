@@ -3,7 +3,8 @@
   "rootNamespace": "MidiFighter64",
   "references": [
     "Unity.InputSystem",
-    "Minis"
+    "Minis",
+    "RtMidi.Runtime"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
