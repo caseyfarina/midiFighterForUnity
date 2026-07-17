@@ -3,12 +3,7 @@
     "rootNamespace": "MidiFighter64.Samples",
     "references": [
         "MidiFighter64.Runtime",
-        "Unity.TextMeshPro",
-        "Unity.RenderPipelines.Universal.Runtime",
-        "Unity.RenderPipelines.Core.Runtime",
-        "Unity.Cinemachine",
-        "Unity.InputSystem",
-        "MiniBokeh.Runtime"
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

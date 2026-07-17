@@ -4,7 +4,7 @@ namespace MidiFighter64.Samples
 {
     /// <summary>
     /// Drop this on any GameObject in an empty scene. It ensures all core MIDI
-    /// components exist and creates the debug UI overlay.
+    /// components exist. Add MidiDebugUI or visualizer components manually as needed.
     /// </summary>
     public class MidiSceneBootstrapper : MonoBehaviour
     {
@@ -26,27 +26,6 @@ namespace MidiFighter64.Samples
 
             if (Object.FindFirstObjectByType<MidiGridRouter>() == null)
                 new GameObject("MidiGridRouter").AddComponent<MidiGridRouter>();
-
-            if (Object.FindFirstObjectByType<FloorCameraController>() == null)
-                new GameObject("FloorCameraController").AddComponent<FloorCameraController>();
-
-            if (Object.FindFirstObjectByType<MidiFighterInteriorSpawner>() == null)
-                new GameObject("MidiFighterInteriorSpawner").AddComponent<MidiFighterInteriorSpawner>();
-
-            if (Object.FindFirstObjectByType<CloseUpCameraController>() == null)
-                new GameObject("CloseUpCameraController").AddComponent<CloseUpCameraController>();
-
-            if (Object.FindFirstObjectByType<OrbitingCameraController>() == null)
-                new GameObject("OrbitingCameraController").AddComponent<OrbitingCameraController>();
-
-            // if (Object.FindFirstObjectByType<MidiDebugUI>() == null)
-            //     new GameObject("MidiDebugUI").AddComponent<MidiDebugUI>();
-
-            if (Object.FindFirstObjectByType<MidiNoteLogger>() == null)
-                new GameObject("MidiNoteLogger").AddComponent<MidiNoteLogger>();
-
-            if (Object.FindFirstObjectByType<MiniBokehFaderDriver>() == null)
-                new GameObject("MiniBokehFaderDriver").AddComponent<MiniBokehFaderDriver>();
         }
     }
 }
