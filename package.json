@@ -1,19 +1,22 @@
 {
   "name": "com.caseyfarina.midifighter64",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Midi Fighter 64 for Unity",
-  "description": "MIDI input bridge for the DJ Tech Tools Midi Fighter 64 grid controller. Converts raw MIDI note events into logical 8x8 grid coordinates and routes them as typed C# events. Built on the Unity Input System and Minis MIDI package.",
+  "description": "MIDI input + LED output bridge for the DJ Tech Tools Midi Fighter 64 and Akai MIDI Mix. Converts raw MIDI events into typed C# events (grid buttons, knobs, faders, toggles), and drives MF64 LEDs via RtMidi. Built on Unity Input System, Minis, and jp.keijiro.rtmidi. Cross-platform (Windows / macOS / Linux).",
   "unity": "6000.0",
   "documentationUrl": "https://github.com/caseyfarina/midiFighterForUnity#readme",
   "changelogUrl": "https://github.com/caseyfarina/midiFighterForUnity/blob/main/CHANGELOG.md",
   "license": "MIT",
   "dependencies": {
     "com.unity.inputsystem": "1.7.0",
-    "jp.keijiro.minis": "1.3.2"
+    "jp.keijiro.minis": "1.3.2",
+    "jp.keijiro.rtmidi": "2.2.0"
   },
   "keywords": [
     "midi",
     "midifighter",
+    "midimix",
+    "akai",
     "controller",
     "input",
     "vj",
@@ -22,7 +25,7 @@
   "samples": [
     {
       "displayName": "Test Scene",
-      "description": "Generates an 8x8 grid of spheres representing Midi Fighter 64 buttons. Pressing buttons highlights the corresponding sphere. A UI button plays an animated LED wave across the hardware and the on-screen grid.",
+      "description": "MF64 + MIDI Mix test scene. Includes an 8x8 sphere grid with button-press highlighting, a Play Wave button that drives both on-screen and hardware LEDs, and a raw MIDI event log. Run 'Tools > MidiFighter64 > Create Test Scene' after import to build the scene.",
       "path": "Samples~/TestScene"
     }
   ],
