@@ -118,5 +118,28 @@ namespace MidiFighter64.Tests
                     $"IsValid mismatch for note {note}");
             }
         }
+
+        // ------------------------------------------------------------------ //
+        // ToNote — inverse of FromNote (split-half aware)
+        // ------------------------------------------------------------------ //
+
+        [Test] public void ToNote_TopLeft_Row1Col1_Is64()       => Assert.AreEqual(64, MidiFighter64InputMap.ToNote(1, 1));
+        [Test] public void ToNote_TopRight_Row1Col8_Is99()      => Assert.AreEqual(99, MidiFighter64InputMap.ToNote(1, 8));
+        [Test] public void ToNote_BottomLeft_Row8Col1_Is36()    => Assert.AreEqual(36, MidiFighter64InputMap.ToNote(8, 1));
+        [Test] public void ToNote_BottomRight_Row8Col8_Is71()   => Assert.AreEqual(71, MidiFighter64InputMap.ToNote(8, 8));
+        [Test] public void ToNote_Row1Col4_Is67()               => Assert.AreEqual(67, MidiFighter64InputMap.ToNote(1, 4));
+        [Test] public void ToNote_Row8Col5_Is68()               => Assert.AreEqual(68, MidiFighter64InputMap.ToNote(8, 5));
+        [Test] public void ToNote_OutOfRange_Returns_Negative1() => Assert.AreEqual(-1, MidiFighter64InputMap.ToNote(9, 1));
+
+        [Test]
+        public void ToNote_FromNote_RoundTripsForAllValidNotes()
+        {
+            for (int n = MidiFighter64InputMap.NOTE_OFFSET; n <= MidiFighter64InputMap.NOTE_MAX; n++)
+            {
+                var btn = MidiFighter64InputMap.FromNote(n);
+                Assert.AreEqual(n, MidiFighter64InputMap.ToNote(btn.row, btn.col),
+                    $"round-trip failed for note {n} → R{btn.row}C{btn.col}");
+            }
+        }
     }
 }

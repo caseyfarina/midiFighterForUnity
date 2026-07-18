@@ -58,5 +58,21 @@ namespace MidiFighter64
 
         public static bool IsInRange(int noteNumber)
             => noteNumber >= NOTE_OFFSET && noteNumber <= NOTE_MAX;
+
+        /// <summary>
+        /// Inverse of <see cref="FromNote"/>. Converts logical (row, col) — both 1-based,
+        /// row 1 = top, col 1 = left — to the hardware MIDI note number.
+        /// Returns -1 if row/col are out of range.
+        /// </summary>
+        public static int ToNote(int row, int col)
+        {
+            if (row < 1 || row > GRID_SIZE || col < 1 || col > GRID_SIZE) return -1;
+
+            int half           = col <= 4 ? 0 : 1;
+            int halfBase       = half == 0 ? 36 : 68;
+            int colInHalf      = (col - 1) - (half * 4); // 0-3
+            int physicalRow    = GRID_SIZE - row;         // invert Y: row 1 (top) → physicalRow 7 (top)
+            return halfBase + physicalRow * 4 + colInHalf;
+        }
     }
 }

@@ -26,6 +26,12 @@ namespace MidiFighter64.Samples
 
             if (Object.FindFirstObjectByType<MidiGridRouter>() == null)
                 new GameObject("MidiGridRouter").AddComponent<MidiGridRouter>();
+
+            if (Object.FindFirstObjectByType<MidiFighterButtonRouter>() == null)
+                new GameObject("MidiFighterButtonRouter").AddComponent<MidiFighterButtonRouter>();
+
+            if (Object.FindFirstObjectByType<MidiFighterOutput>() == null)
+                new GameObject("MidiFighterOutput").AddComponent<MidiFighterOutput>();
         }
     }
 }

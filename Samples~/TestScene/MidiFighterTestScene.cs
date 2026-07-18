@@ -289,16 +289,10 @@ namespace MidiFighter64.Samples
 
         /// <summary>
         /// Converts 0-based array indices (row 0 = top, col 0 = left) to the
-        /// MIDI note number used by the Midi Fighter 64.
-        ///
-        /// The hardware uses physicalRow 0 = bottom, so:
-        ///   physicalRow = (GRID - 1) - arrayRow
-        ///   note        = NOTE_OFFSET + physicalRow * GRID + arrayCol
+        /// MIDI note number used by the Midi Fighter 64. Delegates to the
+        /// split-half-aware <see cref="MidiFighter64InputMap.ToNote"/>.
         /// </summary>
         static int NoteFromArrayIndex(int arrayRow, int arrayCol)
-        {
-            int physicalRow = (GRID - 1) - arrayRow;
-            return NOTE_OFFSET + physicalRow * GRID + arrayCol;
-        }
+            => MidiFighter64InputMap.ToNote(arrayRow + 1, arrayCol + 1);
     }
 }
