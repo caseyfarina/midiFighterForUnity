@@ -243,61 +243,77 @@ static event Action<GridButton, bool> OnGridButton// every button, both on+off
 
 ## MidiFighterOutput (LED Control)
 
-Windows / Editor only. No-op on other platforms.
+Cross-platform via RtMidi. `ledChannelIndex = 2` = MIDI Ch3 (color layer, default).
 
 ```csharp
 MidiFighterOutput.Instance.SetLED(noteNumber, velocity); // velocity 0-127
 MidiFighterOutput.Instance.ClearLED(noteNumber);
 MidiFighterOutput.Instance.ClearAllLEDs();
-MidiFighterOutput.Instance.ledChannelIndex = 0; // 0=Blue 1=Purple 2=Red 3=White
 ```
+
+### MidiFighterLEDColor enum (confirmed on hardware, firmware 20 Jun 2017)
+
+```csharp
+public enum MidiFighterLEDColor { Off = 0, Blue = 78, Pink = 111 }
+```
+
+**Key findings from hardware testing:**
+- Velocities 0–12 produce no light. First visible color is at velocity 13.
+- Online color tables (DJ Tech Tools forum, User Guide Fig 2) do **not** match this firmware.
+- White and grey are available as the hardware's **Utility inactive color** (set in Midifighter Utility app), not as MIDI velocities. Sending velocity 0 reverts a pad to the Utility inactive color — so setting Utility inactive = white gives you white via velocity 0, but this depends on the user's Utility configuration.
+- No MIDI velocity on this firmware produces true white independently.
+- The `MidiFighterLEDColor` enum needs more confirmed values. Next step: systematically scan velocities 13–127 and document colors found.
+
+### MidiFighterButtonRouter LED fields
+
+```csharp
+[SerializeField] bool _driveToggleLEDs   = true;
+[SerializeField, Range(0,127)] int _toggleOnVelocity  = 119; // update after color scan
+[SerializeField, Range(0,127)] int _toggleOffVelocity = 1;
+[SerializeField] bool _driveButtonLEDs   = true;
+[SerializeField, Range(0,127)] int _buttonDownVelocity = 119; // update after color scan
+```
+
+`OnValidate()` sends `_toggleOnVelocity` to all 64 pads in Play mode when the slider moves — use this to scan for colors.
 
 ---
 
 ## Current Branch Status
 
-**Branch**: `feat/midimix-and-button-modes` (4 commits ahead of main)
+**Branch**: `feat/midimix-and-button-modes` (6 commits ahead of main)
 
-### Completed tasks (committed, awaiting Unity verification)
+### Completed tasks
 
 | Task | Commit | Status |
 |------|--------|--------|
-| Task 1 — Split-half grid docs + corner tests | `65e2f15` | **Committed. Need Unity to generate `.meta` for `Tests/Editor/`, then run Test Runner to confirm 4 corner asserts pass.** |
-| Task 2 — Strip app-logic from Samples | `6fc98e6` | **Committed. Verify package compiles clean on fresh import (no Cinemachine/MiniBokeh refs).** |
-| Task 3 — Button/Toggle layer + 8×8 config editor | `667ef16` | **Committed. Need Unity to generate `.meta` for `Editor/` and 3 new Runtime scripts. Then create a MF64ButtonConfig asset and verify toggle vs button behaviour on hardware.** |
-| Task 4 — RtMidi output + corrected color model | `448a6a0` | **Committed. Hardware verify: toggle a pad → LED lights; toggle off → returns to Utility inactive color. Transcribe real Fig 2 velocity values into `MidiFighterColor`.** |
+| Task 1 — Split-half grid docs + corner tests | `65e2f15` | **Done. 14/14 EditMode tests pass (verified in Test Runner).** |
+| Task 2 — Strip app-logic from Samples | `6fc98e6` | **Done.** |
+| Task 3 — Button/Toggle layer + 8×8 config editor | `667ef16` | **Done. Verified on hardware: toggle/button modes work. LED feedback working.** |
+| Task 4 — RtMidi output + LED color model | `448a6a0` | **Partially done — LED output works. Color palette NOT fully mapped (see Known Issues).** |
+| Meta + asmdef fix | `d5230a3` | **Done. RtMidi.Runtime added to asmdef; all .meta files committed.** |
+| LED color picker + OnValidate preview | uncommitted | **Done in working tree — not yet committed.** |
 
-### What to do after restarting
+### Uncommitted changes (commit before continuing)
 
-1. Open the Unity project — Unity auto-generates `.meta` files for:
-   - `Tests/Editor/MidiFighter64.Tests.asmdef`
-   - `Tests/Editor/MidiFighter64InputMapTests.cs`
-   - `Editor/MidiFighter64.Editor.asmdef`
-   - `Editor/MidiFighter64ButtonConfigEditor.cs`
-   - `Runtime/MidiFighterButtonMode.cs`
-   - `Runtime/MidiFighter64ButtonConfig.cs`
-   - `Runtime/MidiFighterButtonRouter.cs`
-   - `Tests/` folder `.meta`
-   - `Editor/` folder `.meta`
-2. Commit those `.meta` files: `git add -A && git commit -m "meta: add Unity-generated .meta files for Tasks 1-4"`
-3. Run **Window → Test Runner → EditMode** — confirm `MidiFighter64InputMapTests` all pass.
-4. Test Task 3 on hardware: create a `MidiFighter64ButtonConfig` asset, check a few cells → verified as Toggle, unchecked as Button.
-5. Test Task 4 on hardware: verify toggle pads light their LED; toggle off clears it. Transcribe the real Fig 2 velocity values into `MidiFighterOutput.MidiFighterColor`.
-6. Continue with **Task 5** (test scene) and **Task 6** (package metadata + docs).
+- `Runtime/MidiFighterOutput.cs` — `MidiFighterLEDColor` enum with confirmed values; removed stale `MidiFighterColor` nested class
+- `Runtime/MidiFighterButtonRouter.cs` — int velocity sliders replacing enum pickers; `_driveToggleLEDs` and `_driveButtonLEDs` default to true; `OnValidate` color preview; button LED on/off wiring
+
+Commit message suggestion: `feat(leds): velocity sliders with live preview; confirmed color palette`
 
 ### Remaining tasks
 
-- **Task 5** — Openable test scene (`MidiControllersTestScene.unity`) for MF64 + MIDI Mix with debug readout.
-  - Author scene in `Samples/TestScene/` (no tilde) first so Unity generates wiring metas, then rename to `Samples~/TestScene/`.
-- **Task 6** — Package metadata + docs + version 1.1.0.
-- **Task 7** (optional) — Hardening: first-event-lost, USB hub docs, MIDI Mix bank/shift note remapping.
+- **Color palette** — scan velocities 13–127 using the `OnValidate` preview slider; document colors in `MidiFighterLEDColor`. Decide whether to keep enum or just rely on the raw sliders.
+- **Task 5** — Test scene (`MidiControllersTestScene.unity`) for MF64 + MIDI Mix with debug readout. The `Assets/` folder is currently a bare Unity template — no sample scripts are present. The scene needs to be created from scratch in `Assets/Scenes/` (Unity generates metas), then optionally moved to `Samples~/`.
+- **Task 6** — Package metadata: bump `package.json` to 1.1.0, update `CHANGELOG.md`.
+- **Task 7** (optional) — Hardening: first-event-lost bug, USB hub docs, MIDI Mix bank/shift remapping.
 
 ---
 
-## Known Issues (updated)
+## Known Issues
 
-- `GridButton.IsValid` and `IsInRange` are now aligned (both `<= NOTE_MAX`). No longer an issue.
-- `MidiFighterOutput` now uses RtMidi for cross-platform output (winmm removed). Confirm macOS/Linux with hardware.
+- **LED color palette incomplete.** `MidiFighterLEDColor` only has Off=0, Blue=78, Pink=111. Need to scan 13–127 on hardware. Online tables do not match firmware 20 Jun 2017.
+- **White/grey LEDs** require setting Utility inactive color in Midifighter Utility app — not achievable via MIDI velocity alone on this firmware.
+- `MidiFighterOutput` uses RtMidi — cross-platform in theory, but only tested on Windows. Confirm macOS/Linux.
 - `CHANGELOG.md` and `package.json` version not yet bumped to 1.1.0 (Task 6).
 - First MIDI event per channel is still lost (device created on first event, callback subscribed after) — Task 7.
-- `MidiFighterColor` velocity constants are placeholders — transcribe real values from MF64 User Guide Fig 2 / Utility after hardware test.
+- `Assets/` folder is a bare Unity URP template. No sample scripts exist there. The file map above describing `Assets/midiSupport/` reflects an older state and is no longer accurate.

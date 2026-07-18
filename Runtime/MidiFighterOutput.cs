@@ -5,6 +5,24 @@ using RtMidi;
 namespace MidiFighter64
 {
     /// <summary>
+    /// Hardware LED color palette for the Midi Fighter 64 (velocity → color, Ch3).
+    /// Values confirmed from MF64 User Guide Fig 2.
+    /// </summary>
+    // Velocities confirmed on hardware, firmware 24 Jul 2017 (expanded color palette).
+    public enum MidiFighterLEDColor
+    {
+        Off        = 0,
+        DarkGrey   = 1,
+        Grey       = 2,
+        White      = 3,
+        BrightBlue = 37,
+        DarkBlue   = 39,
+        BrightPink = 56,
+        DarkPink   = 59,
+    }
+
+
+    /// <summary>
     /// Sends MIDI Note On messages to the Midi Fighter 64 to control its LEDs.
     /// Uses jp.keijiro.rtmidi (RtMidi.Runtime) for cross-platform MIDI output.
     ///
@@ -28,21 +46,6 @@ namespace MidiFighter64
         [Tooltip("MIDI channel layer (0-based). 2 = Channel 3 (color, default). 3 = Channel 4 (animation).")]
         [Range(0, 3)]
         public int ledChannelIndex = 2;
-
-        // ------------------------------------------------------------------
-        // MidiFighterColor — velocity → color mapping (MF64 User Guide Fig 2)
-        // TODO: transcribe the complete palette from Fig 2 / the Utility app.
-        //       Do NOT invent values. The only confirmed anchor is velocity 5 = bright red on Ch3.
-        // ------------------------------------------------------------------
-        public static class MidiFighterColor
-        {
-            /// <summary>Velocity 0 reverts to the Utility inactive color (set it to black for true off).</summary>
-            public const int Off = 0;
-
-            // TODO: fill from MF64 User Guide Fig 2 after confirming on hardware
-            // public const int BrightRed    =   5; // confirmed: Ch3 vel 5 = bright red
-            // public const int ...          = ...;
-        }
 
         // ------------------------------------------------------------------
 

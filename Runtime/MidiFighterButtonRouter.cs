@@ -25,11 +25,20 @@ namespace MidiFighter64
         [SerializeField] float _holdRepeatInterval = 0f;
 
         [Header("LED Feedback")]
-        [Tooltip("If true, toggled-on pads light up via MidiFighterOutput; toggled-off pads clear.")]
-        [SerializeField] bool _driveToggleLEDs = false;
+        [Tooltip("Mirror toggle state to MidiFighterOutput LEDs automatically.")]
+        [SerializeField] bool _driveToggleLEDs = true;
 
-        [Tooltip("Velocity sent to the LED when a pad is toggled on.")]
-        [SerializeField, Range(1, 127)] int _toggleOnVelocity = 127;
+        [Tooltip("LED color when a Toggle pad is turned on.")]
+        [SerializeField] MidiFighterLEDColor _toggleOnColor  = MidiFighterLEDColor.White;
+
+        [Tooltip("LED color when a Toggle pad is turned off.")]
+        [SerializeField] MidiFighterLEDColor _toggleOffColor = MidiFighterLEDColor.DarkGrey;
+
+        [Tooltip("Flash LEDs while a Button pad is held.")]
+        [SerializeField] bool _driveButtonLEDs = true;
+
+        [Tooltip("LED color while a Button pad is held down.")]
+        [SerializeField] MidiFighterLEDColor _buttonDownColor = MidiFighterLEDColor.BrightPink;
 
         // ------------------------------------------------------------------
 
@@ -114,6 +123,7 @@ namespace MidiFighter64
             {
                 _heldPads[note] = 0f;
                 OnButtonPress?.Invoke(btn, velocity);
+                if (_driveButtonLEDs) DriveButtonLED(note, true);
             }
         }
 
@@ -128,6 +138,7 @@ namespace MidiFighter64
             {
                 _heldPads.Remove(note);
                 OnButtonRelease?.Invoke(btn);
+                if (_driveButtonLEDs) DriveButtonLED(note, false);
             }
             // Toggle mode ignores note-off
         }
@@ -168,10 +179,23 @@ namespace MidiFighter64
         {
             var output = MidiFighterOutput.Instance;
             if (output == null) return;
-            if (isOn)
-                output.SetLED(noteNumber, _toggleOnVelocity);
-            else
-                output.ClearLED(noteNumber);
+            output.SetLED(noteNumber, (int)(isOn ? _toggleOnColor : _toggleOffColor));
+        }
+
+        void DriveButtonLED(int noteNumber, bool isDown)
+        {
+            var output = MidiFighterOutput.Instance;
+            if (output == null) return;
+            output.SetLED(noteNumber, (int)(isDown ? _buttonDownColor : _toggleOffColor));
+        }
+
+        void OnValidate()
+        {
+            if (!Application.isPlaying) return;
+            var output = MidiFighterOutput.Instance;
+            if (output == null) return;
+            for (int n = MidiFighter64InputMap.NOTE_OFFSET; n <= MidiFighter64InputMap.NOTE_MAX; n++)
+                output.SetLED(n, (int)_toggleOnColor);
         }
 
         /// <summary>
