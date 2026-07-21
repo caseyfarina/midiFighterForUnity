@@ -22,6 +22,15 @@ namespace MidiFighter64
 
         readonly List<Minis.MidiDevice> _devices = new();
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            Instance        = null;
+            OnNoteOn        = null;
+            OnNoteOff       = null;
+            OnControlChange = null;
+        }
+
         void Awake()
         {
             if (Instance != null && Instance != this)

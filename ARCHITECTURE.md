@@ -23,9 +23,9 @@ graph TD
     end
 
     subgraph MMPATH ["MIDI Mix  Runtime/"]
-        MMMAP["MidiMixInputMap  static class<br/>───────────────────────────<br/>TryGetKnob(cc) → MixKnob<br/>TryGetFader(cc) → MixFader<br/>TryGetButton(note) → MixButton<br/>IsBankLeft(note) · IsBankRight(note)"]
-        MMSTRUCTS["Structs and Enum<br/>───────────────────────────<br/>MixKnob  channel · row · ccNumber<br/>MixFader  channel · isMaster · ccNumber<br/>MixButton  channel · type · noteNumber<br/>MidiMixButton  Mute Solo RecArm RecArmShifted"]
-        MMR["MidiMixRouter  MonoBehaviour<br/>───────────────────────────<br/>OnKnob(ch, row, val)<br/>OnChannelFader(ch, val) · OnMasterFader(val)<br/>OnMute · OnSolo · OnRecArm · OnRecArmShifted(ch, bool)<br/>OnBankLeft · OnBankRight<br/>OnKnobRaw · OnFaderRaw · OnButtonRaw<br/>override RouteCC() · RouteNote()"]
+        MMMAP["MidiMixInputMap  static class<br/>───────────────────────────<br/>TryGetKnob(cc) → MixKnob<br/>TryGetFader(cc) → MixFader<br/>TryGetButton(note) → MixButton<br/>IsBankLeft/IsBankRight/IsSoloModifier(note)"]
+        MMSTRUCTS["Structs and Enum<br/>───────────────────────────<br/>MixKnob  channel · row · ccNumber<br/>MixFader  channel · isMaster · ccNumber<br/>MixButton  channel · type · noteNumber<br/>MidiMixButton  Mute Solo RecArm"]
+        MMR["MidiMixRouter  MonoBehaviour<br/>───────────────────────────<br/>OnKnob(ch, row, val)<br/>OnChannelFader(ch, val) · OnMasterFader(val)<br/>OnMute · OnSolo · OnRecArm (ch, bool)<br/>OnSoloModifier(isDown) · IsSoloHeld<br/>OnBankLeft · OnBankRight<br/>OnKnobRaw · OnFaderRaw · OnButtonRaw<br/>override RouteCC() · RouteNote()"]
     end
 
     subgraph SAMPLES ["Samples~/TestScene/"]

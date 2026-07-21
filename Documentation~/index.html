@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Midi Fighter 64 for Unity — Documentation</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: #0d0d0f;
+  --fg: #e6e6e6;
+  --muted: #9a9a9a;
+  --accent: #ff4faf;
+  --accent-2: #58c4ff;
+  --code-bg: #16161a;
+  --border: #24242a;
+  --warn: #ffb84f;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 880px; margin: 0 auto; padding: 48px 32px 96px; }
+h1, h2, h3, h4 { color: #fff; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 2.1rem; margin: 0 0 4px; }
+h2 { font-size: 1.4rem; margin: 48px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+h3 { font-size: 1.1rem; margin: 28px 0 8px; color: var(--accent-2); }
+h4 { font-size: 0.95rem; margin: 20px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+p { margin: 8px 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: var(--muted); margin: 0 0 24px; }
+code, pre { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88rem; }
+code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; color: #d8d8d8; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 14px 16px; overflow-x: auto; margin: 12px 0 20px; }
+pre code { background: transparent; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; font-size: 0.92rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.06em; }
+tr:hover td { background: #131317; }
+ul, ol { padding-left: 24px; }
+li { margin: 4px 0; }
+.callout { border-left: 3px solid var(--accent-2); background: #10131a;
+  padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0; }
+.callout.warn { border-left-color: var(--warn); background: #1a140b; }
+.grid {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px;
+  font-family: "JetBrains Mono", monospace; font-size: 0.76rem; margin: 12px 0 20px;
+}
+.grid > div { background: var(--code-bg); border: 1px solid var(--border); padding: 8px 6px;
+  text-align: center; border-radius: 3px; color: #b8b8b8; }
+.grid .l { background: #17131a; }
+.grid .r { background: #131719; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+  vertical-align: middle; margin-right: 6px; border: 1px solid #333; }
+nav.toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px 18px; margin: 20px 0 32px; }
+nav.toc ul { list-style: none; padding-left: 0; columns: 2; }
+nav.toc li { margin: 2px 0; }
+.badge { display: inline-block; background: #1a1a20; border: 1px solid var(--border);
+  color: var(--muted); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; margin-right: 4px; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 40px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Midi Fighter 64 for Unity</h1>
+<p class="subtitle">
+  <span class="badge">v1.1.0</span>
+  <span class="badge">Unity 6+</span>
+  <span class="badge">URP / BiRP</span>
+  MIDI input + LED output bridge for the DJ Tech Tools Midi Fighter 64 and Akai MIDI Mix.
+</p>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ul>
+    <li><a href="#install">Installation</a></li>
+    <li><a href="#quickstart">Quick start</a></li>
+    <li><a href="#grid">MF64 grid layout</a></li>
+    <li><a href="#buttonrouter">Button / Toggle modes</a></li>
+    <li><a href="#leds">LED output</a></li>
+    <li><a href="#palette">LED color palette</a></li>
+    <li><a href="#midimix">Akai MIDI Mix</a></li>
+    <li><a href="#testscene">Test scene</a></li>
+    <li><a href="#api">API reference</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ul>
+</nav>
+
+<h2 id="install">Installation</h2>
+
+<h3>1. Add the Keijiro scoped registry</h3>
+<p>Open <strong>Edit &rarr; Project Settings &rarr; Package Manager</strong> and add:</p>
+<table>
+  <tr><th>Name</th><td>Keijiro</td></tr>
+  <tr><th>URL</th><td><code>https://registry.npmjs.com</code></td></tr>
+  <tr><th>Scope(s)</th><td><code>jp.keijiro</code></td></tr>
+</table>
+
+<h3>2. Install <code>Minis</code> and <code>RtMidi</code></h3>
+<p>In <strong>Window &rarr; Package Manager &rarr; My Registries</strong>, install <code>jp.keijiro.minis</code>. It pulls in <code>jp.keijiro.rtmidi</code> as a dependency.</p>
+
+<h3>3. Install this package</h3>
+<p>In <strong>Package Manager &rarr; + &rarr; Add package from git URL</strong>:</p>
+<pre><code>https://github.com/caseyfarina/midiFighterForUnity.git</code></pre>
+
+<h3>4. Update your Midi Fighter 64 firmware</h3>
+<p>Only firmware <strong>24 Jul 2017</strong> or later supports the full 128-color palette this package targets. Download the latest <a href="https://store.djtechtools.com/pages/midi-fighter-utility">Midi Fighter Utility</a> and click <em>Update Firmware</em>.</p>
+
+<div class="callout warn">
+  <strong>Utility settings required:</strong> Bank 1, MIDI Channel 3, MIDI Type = Notes, Corner Button Bank Change = disabled.
+</div>
+
+<hr>
+
+<h2 id="quickstart">Quick start</h2>
+
+<p>Two paths:</p>
+
+<h3>A. Use the generated test scene</h3>
+<ol>
+  <li>Import the sample: <strong>Package Manager &rarr; Samples &rarr; Test Scene &rarr; Import</strong></li>
+  <li>Run <strong>Tools &rarr; MidiFighter64 &rarr; Create Test Scene</strong></li>
+  <li>Press Play — press pads on the MF64 to light spheres on-screen and LEDs on the hardware</li>
+</ol>
+
+<h3>B. Build your own</h3>
+<ol>
+  <li>Add a GameObject to your scene, attach <code>MidiEventManager</code>, <code>UnityMainThreadDispatcher</code>, <code>MidiGridRouter</code> (and <code>MidiMixRouter</code> if using MIDI Mix)</li>
+  <li>Add <code>MidiFighterButtonRouter</code> if you want Button/Toggle semantics with LED feedback</li>
+  <li>Add <code>MidiFighterOutput</code> to drive the LEDs</li>
+  <li>In your own script, subscribe to the events you care about (see <a href="#api">API reference</a>)</li>
+</ol>
+
+<pre><code>using MidiFighter64;
+
+void OnEnable()
+{
+    MidiFighterButtonRouter.OnButtonPress += HandlePress;
+    MidiFighterButtonRouter.OnToggle      += HandleToggle;
+    MidiMixRouter.OnKnob                  += HandleKnob;
+}
+
+void OnDisable()
+{
+    MidiFighterButtonRouter.OnButtonPress -= HandlePress;
+    MidiFighterButtonRouter.OnToggle      -= HandleToggle;
+    MidiMixRouter.OnKnob                  -= HandleKnob;
+}
+
+void HandlePress(GridButton btn, float velocity) { /* ... */ }
+void HandleToggle(GridButton btn, bool isOn)     { /* ... */ }
+void HandleKnob(int channel, int row, float val) { /* ... */ }
+</code></pre>
+
+<div class="callout">
+  <strong>Always unsubscribe in <code>OnDisable</code>.</strong> Router events are static — a subscribed component that's destroyed without unsubscribing will keep the object alive and fire on stale state.
+</div>
+
+<hr>
+
+<h2 id="grid">MF64 grid layout</h2>
+
+<p>The Midi Fighter 64 uses a <strong>split-half layout</strong>: left columns (1–4) send notes 36–67, right columns (5–8) send 68–99. Each half numbers 4 notes per row, bottom to top. Hardware-confirmed corners: <code>64 / 99 / 36 / 71</code>.</p>
+
+<div class="grid">
+  <div class="l">64</div><div class="l">65</div><div class="l">66</div><div class="l">67</div>
+  <div class="r">96</div><div class="r">97</div><div class="r">98</div><div class="r">99</div>
+  <div class="l">60</div><div class="l">61</div><div class="l">62</div><div class="l">63</div>
+  <div class="r">92</div><div class="r">93</div><div class="r">94</div><div class="r">95</div>
+  <div class="l">56</div><div class="l">57</div><div class="l">58</div><div class="l">59</div>
+  <div class="r">88</div><div class="r">89</div><div class="r">90</div><div class="r">91</div>
+  <div class="l">52</div><div class="l">53</div><div class="l">54</div><div class="l">55</div>
+  <div class="r">84</div><div class="r">85</div><div class="r">86</div><div class="r">87</div>
+  <div class="l">48</div><div class="l">49</div><div class="l">50</div><div class="l">51</div>
+  <div class="r">80</div><div class="r">81</div><div class="r">82</div><div class="r">83</div>
+  <div class="l">44</div><div class="l">45</div><div class="l">46</div><div class="l">47</div>
+  <div class="r">76</div><div class="r">77</div><div class="r">78</div><div class="r">79</div>
+  <div class="l">40</div><div class="l">41</div><div class="l">42</div><div class="l">43</div>
+  <div class="r">72</div><div class="r">73</div><div class="r">74</div><div class="r">75</div>
+  <div class="l">36</div><div class="l">37</div><div class="l">38</div><div class="l">39</div>
+  <div class="r">68</div><div class="r">69</div><div class="r">70</div><div class="r">71</div>
+</div>
+
+<p>Convert between MIDI notes and grid coordinates with the static helper:</p>
+<pre><code>GridButton btn = MidiFighter64InputMap.FromNote(64); // → row 1, col 1
+int note       = MidiFighter64InputMap.ToNote(1, 1); // → 64
+</code></pre>
+
+<hr>
+
+<h2 id="buttonrouter">Button / Toggle modes</h2>
+
+<p><code>MidiFighterButtonRouter</code> gives each pad one of two behaviors:</p>
+<ul>
+  <li><strong>Button</strong> — fires <code>OnButtonPress</code> on press, <code>OnButtonHold</code> each frame while held, <code>OnButtonRelease</code> on release</li>
+  <li><strong>Toggle</strong> — fires <code>OnToggle(btn, true/false)</code> on press; ignores release</li>
+</ul>
+
+<p>Default is Button for every pad. Assign a <code>MidiFighter64ButtonConfig</code> ScriptableObject to the router's <em>Config</em> slot to make specific pads toggle.</p>
+
+<h3>Create a Button Config</h3>
+<ol>
+  <li>Project window &rarr; right click &rarr; <strong>Create &rarr; MidiFighter64 &rarr; Button Config</strong></li>
+  <li>In the Inspector's 8&times;8 grid, tick the pads you want as toggles</li>
+  <li>Drag the asset onto the router's <em>Config</em> field</li>
+</ol>
+
+<hr>
+
+<h2 id="leds">LED output</h2>
+
+<p><code>MidiFighterOutput</code> writes to the MF64's LEDs via <code>jp.keijiro.rtmidi</code> — cross-platform (Windows / macOS / Linux). Drop the component on any GameObject; it auto-discovers the device, hot-plug re-opens on port changes.</p>
+
+<pre><code>using MidiFighter64;
+
+// Raw velocity (0–127):
+MidiFighterOutput.Instance.SetLED(note: 64, velocity: 3);
+
+// Or via the palette enum:
+MidiFighterOutput.Instance.SetLED(64, MidiFighterLEDColor.White);
+
+MidiFighterOutput.Instance.ClearLED(64);
+MidiFighterOutput.Instance.ClearAllLEDs();
+MidiFighterOutput.Instance.SetAllLEDs((int)MidiFighterLEDColor.Blue);
+
+// Animation channel (Ch4):
+MidiFighterOutput.Instance.SetAnimation(64, velocity: 20);
+</code></pre>
+
+<p>The <code>MidiFighterButtonRouter</code> can drive LEDs automatically when <em>Drive Toggle LEDs</em> or <em>Drive Button LEDs</em> is checked in the Inspector. You pick the on/off colors from a dropdown.</p>
+
+<div class="callout">
+  <strong>Clear-on-Start:</strong> <code>MidiFighterOutput</code> clears all 64 LEDs at scene start and scene exit by default so the hardware doesn't carry stale state between Play sessions. Uncheck <em>Clear On Start</em> to keep whatever state was there.
+</div>
+
+<hr>
+
+<h2 id="palette">LED color palette</h2>
+
+<p>Hardware-confirmed on firmware <strong>24 Jul 2017</strong>. Palettes on older firmware differ significantly — update via the Midi Fighter Utility to use these values.</p>
+
+<table>
+  <tr><th>Enum</th><th>Velocity</th><th>Approximate color</th></tr>
+  <tr><td><code>Off</code></td><td>0</td><td><span class="swatch" style="background:#0d0d0f;"></span>black (or Utility inactive color)</td></tr>
+  <tr><td><code>DarkGrey</code></td><td>1</td><td><span class="swatch" style="background:#404045;"></span>dark grey</td></tr>
+  <tr><td><code>Grey</code></td><td>2</td><td><span class="swatch" style="background:#8c8c93;"></span>medium grey</td></tr>
+  <tr><td><code>White</code></td><td>3</td><td><span class="swatch" style="background:#ffffff;"></span>bright white</td></tr>
+  <tr><td><code>BrightBlue</code></td><td>37</td><td><span class="swatch" style="background:#4090ff;"></span>vivid blue</td></tr>
+  <tr><td><code>DarkBlue</code></td><td>39</td><td><span class="swatch" style="background:#1a3399;"></span>deep blue</td></tr>
+  <tr><td><code>BrightPink</code></td><td>56</td><td><span class="swatch" style="background:#ff4fbf;"></span>hot pink</td></tr>
+  <tr><td><code>DarkPink</code></td><td>59</td><td><span class="swatch" style="background:#8c2666;"></span>deep pink</td></tr>
+</table>
+
+<p>All 128 velocities are reachable via the raw <code>SetLED(int, int)</code> overload. The enum names only the values our hardware testing verified.</p>
+
+<h3>On-screen color sync</h3>
+<pre><code>Color c = MidiFighterLEDColor.BrightPink.ToUnityColor();
+myMaterial.SetColor("_BaseColor", c);
+</code></pre>
+
+<hr>
+
+<h2 id="midimix">Akai MIDI Mix</h2>
+
+<p><code>MidiMixRouter</code> exposes the mixer's controls as typed events. Add it to your scene; subscribe:</p>
+
+<pre><code>using MidiFighter64;
+
+MidiMixRouter.OnKnob           += (ch, row, v) => { /* ch 1-8, row 1-3, v 0-1 */ };
+MidiMixRouter.OnChannelFader   += (ch, v)     => { /* ch 1-8, v 0-1 */ };
+MidiMixRouter.OnMasterFader    += v            => { /* v 0-1 */ };
+MidiMixRouter.OnMute           += (ch, on)    => { /* fires when SOLO is NOT held */ };
+MidiMixRouter.OnSolo           += (ch, on)    => { /* Mute button pressed while SOLO held */ };
+MidiMixRouter.OnRecArm         += (ch, on)    => { };
+MidiMixRouter.OnSoloModifier   += isDown       => { /* SOLO modifier button state */ };
+MidiMixRouter.OnBankLeft       += ()           => { };
+MidiMixRouter.OnBankRight      += ()           => { };
+
+// Or query the modifier state on demand:
+if (MidiMixRouter.IsSoloHeld) { /* ... */ }
+</code></pre>
+
+<div class="callout">
+  <strong>Solo behavior:</strong> the mixer's SOLO button is a modifier. It emits its own note (27) on press and release, tracked via <code>OnSoloModifier(bool)</code> and <code>IsSoloHeld</code>. While it's held, the 8 Mute buttons emit the <em>Solo note set</em> and fire <code>OnSolo</code> instead of <code>OnMute</code>. Rec Arm buttons are not affected.
+</div>
+
+<div class="callout">
+  <strong>Send All button:</strong> pressing it causes the hardware to re-emit all 33 CC messages (24 knobs + 8 channel faders + master fader). No dedicated note is sent — the router just sees a burst of CC events.
+</div>
+
+<h3 id="midimix-leds">MIDI Mix LED echo</h3>
+<p>The Mute (amber) and Rec-Arm (red) buttons on the MIDI Mix <strong>do not self-illuminate on press</strong>. The hardware only lights them when it receives a matching Note On back from the host. Add <code>MidiMixOutput</code> to your scene and it will auto-mirror presses.</p>
+
+<pre><code>using MidiFighter64;
+
+// Automatic (default): LEDs light on press, clear on release. No code needed.
+
+// Manual — for latched toggle behavior:
+MidiMixOutput.Instance.SetMuteLED(channel: 1, lit: true);
+MidiMixOutput.Instance.SetRecArmLED(channel: 3, lit: true);
+MidiMixOutput.Instance.SetSoloLED(channel: 5, lit: true);   // Mute-while-SOLO-held
+MidiMixOutput.Instance.ClearAllLEDs();
+</code></pre>
+<p>To implement toggles, uncheck <em>Auto Mirror Buttons</em> on <code>MidiMixOutput</code>, subscribe to <code>MidiMixRouter.OnMute</code>, and call <code>SetMuteLED</code> with your own state tracking.</p>
+
+<hr>
+
+<h2 id="testscene">Test scene</h2>
+
+<p>The Test Scene sample gives you a running visual + LED integration test in one click.</p>
+
+<ol>
+  <li><strong>Package Manager &rarr; Midi Fighter 64 &rarr; Samples &rarr; Test Scene &rarr; Import</strong></li>
+  <li><strong>Tools &rarr; MidiFighter64 &rarr; Create Test Scene</strong> — saves <code>MidiControllersTestScene.unity</code> under <code>Assets/</code></li>
+  <li>Press Play</li>
+</ol>
+
+<p>The scene includes:</p>
+<ul>
+  <li>An 8&times;8 sphere grid mapped 1:1 to MF64 pads. Pressing a pad turns the matching sphere the router's <em>Button Down</em> color.</li>
+  <li>A <strong>Play Wave</strong> UI button that animates a left-to-right sweep on-screen <em>and</em> on the physical LEDs.</li>
+  <li>A raw MIDI event log overlay for debugging.</li>
+</ul>
+
+<hr>
+
+<h2 id="api">API reference</h2>
+
+<h3><code>MidiEventManager</code></h3>
+<table>
+  <tr><th>Member</th><th>Description</th></tr>
+  <tr><td><code>static event Action&lt;int, float&gt; OnNoteOn</code></td><td>note, velocity 0–1</td></tr>
+  <tr><td><code>static event Action&lt;int&gt; OnNoteOff</code></td><td>note</td></tr>
+  <tr><td><code>static event Action&lt;int, float&gt; OnControlChange</code></td><td>cc, value 0–1</td></tr>
+  <tr><td><code>string DeviceName</code></td><td>connected device name</td></tr>
+</table>
+
+<h3><code>MidiFighter64InputMap</code> (static)</h3>
+<table>
+  <tr><td><code>FromNote(int) → GridButton</code></td><td>note → row/col/linearIndex</td></tr>
+  <tr><td><code>ToNote(int row, int col) → int</code></td><td>inverse, returns -1 if out of range</td></tr>
+  <tr><td><code>IsInRange(int) → bool</code></td><td>true for 36–99</td></tr>
+  <tr><td><code>const int NOTE_OFFSET</code></td><td>36</td></tr>
+  <tr><td><code>const int NOTE_MAX</code></td><td>99</td></tr>
+  <tr><td><code>const int GRID_SIZE</code></td><td>8</td></tr>
+</table>
+
+<h3><code>GridButton</code> (struct)</h3>
+<table>
+  <tr><td><code>int row</code></td><td>1–8 (1 = top)</td></tr>
+  <tr><td><code>int col</code></td><td>1–8 (1 = left)</td></tr>
+  <tr><td><code>int linearIndex</code></td><td>0–63 (row-major, top-left = 0)</td></tr>
+  <tr><td><code>int noteNumber</code></td><td>original MIDI note</td></tr>
+  <tr><td><code>bool IsValid</code></td><td>true when noteNumber ∈ [36, 99]</td></tr>
+</table>
+
+<h3><code>MidiGridRouter</code></h3>
+<table>
+  <tr><td><code>OnRow1(int col)</code></td><td>row 1 press, note-on only</td></tr>
+  <tr><td><code>OnGridPreset(int row, int col)</code></td><td>rows 2–4, cols 1–7</td></tr>
+  <tr><td><code>OnGridRandomize(int row)</code></td><td>rows 2–4, col 8</td></tr>
+  <tr><td><code>OnRow5(int col)</code></td><td>row 5 press</td></tr>
+  <tr><td><code>OnSlotToggle(int slot, bool on)</code></td><td>rows 6–8, slot 1–24</td></tr>
+  <tr><td><code>OnGridButton(GridButton, bool)</code></td><td>every note-on and note-off</td></tr>
+</table>
+
+<h3><code>MidiFighterButtonRouter</code></h3>
+<table>
+  <tr><td><code>OnButtonPress(GridButton, float)</code></td><td>note-on for Button-mode pads</td></tr>
+  <tr><td><code>OnButtonHold(GridButton, float)</code></td><td>every frame (or <em>Hold Repeat Interval</em>) while held</td></tr>
+  <tr><td><code>OnButtonRelease(GridButton)</code></td><td>note-off for Button-mode pads</td></tr>
+  <tr><td><code>OnToggle(GridButton, bool)</code></td><td>state change on Toggle-mode pads</td></tr>
+  <tr><td><code>IsToggled(int note) → bool</code></td><td>current toggle state</td></tr>
+  <tr><td><code>IsHeld(int note) → bool</code></td><td>current hold state</td></tr>
+  <tr><td><code>SetToggle(int, bool, bool)</code></td><td>programmatically set a toggle</td></tr>
+  <tr><td><code>PushToggleLEDs()</code></td><td>re-sync all toggle LEDs to hardware</td></tr>
+  <tr><td><code>ButtonDownColor</code></td><td>read the current button-down color (for on-screen sync)</td></tr>
+</table>
+
+<h3><code>MidiFighterOutput</code></h3>
+<table>
+  <tr><td><code>static Instance</code></td><td>singleton accessor</td></tr>
+  <tr><td><code>SetLED(int note, int velocity)</code></td><td>raw 0–127</td></tr>
+  <tr><td><code>SetLED(int note, MidiFighterLEDColor)</code></td><td>enum overload</td></tr>
+  <tr><td><code>ClearLED(int note)</code></td><td>velocity 0</td></tr>
+  <tr><td><code>SetAllLEDs(int velocity)</code></td><td>every pad, same velocity</td></tr>
+  <tr><td><code>ClearAllLEDs()</code></td><td>every pad, velocity 0</td></tr>
+  <tr><td><code>SetAnimation(int note, int velocity)</code></td><td>Channel 4 animation trigger</td></tr>
+  <tr><td><code>int ledChannelIndex</code></td><td>2 = color layer (default), 3 = animation layer</td></tr>
+</table>
+
+<h3><code>MidiMixRouter</code></h3>
+<table>
+  <tr><td><code>OnKnob(int ch, int row, float v)</code></td><td>ch 1–8, row 1–3, v 0–1</td></tr>
+  <tr><td><code>OnChannelFader(int ch, float v)</code></td><td>ch 1–8</td></tr>
+  <tr><td><code>OnMasterFader(float v)</code></td><td></td></tr>
+  <tr><td><code>OnMute(int ch, bool on)</code></td><td>Mute pressed while SOLO not held</td></tr>
+  <tr><td><code>OnSolo(int ch, bool on)</code></td><td>Mute pressed while SOLO IS held</td></tr>
+  <tr><td><code>OnRecArm(int ch, bool on)</code></td><td>ch 1–8</td></tr>
+  <tr><td><code>OnSoloModifier(bool isDown)</code></td><td>SOLO modifier button state</td></tr>
+  <tr><td><code>static bool IsSoloHeld</code></td><td>true while SOLO is held</td></tr>
+  <tr><td><code>OnBankLeft / OnBankRight</code></td><td>bank shift buttons (note 25 / 26)</td></tr>
+  <tr><td><code>OnKnobRaw / OnFaderRaw / OnButtonRaw</code></td><td>raw <code>MixKnob</code> / <code>MixFader</code> / <code>MixButton</code> structs</td></tr>
+</table>
+
+<hr>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<h3>No MIDI events fire</h3>
+<ul>
+  <li>Is <code>MidiEventManager</code> in the scene? Nothing works without it.</li>
+  <li>The first event on any channel is sometimes swallowed by Minis — press a pad twice.</li>
+  <li>Try disconnecting via a USB hub. Some hubs cause detection issues.</li>
+</ul>
+
+<h3>Wrong colors on LEDs</h3>
+<ul>
+  <li>Your firmware is pre-24 Jul 2017. Update via the Midi Fighter Utility.</li>
+  <li>Utility's <em>Base Channel</em> must be 3. <em>MIDI Type</em> must be Notes.</li>
+</ul>
+
+<h3>Spheres render magenta in URP</h3>
+<ul>
+  <li>Fixed as of v1.1.0 — <code>MidiFighterTestScene</code> now reuses the material Unity's <code>CreatePrimitive</code> assigns, which has the correct pipeline shader.</li>
+</ul>
+
+<h3>LEDs stay lit after exiting Play</h3>
+<ul>
+  <li>The MF64 remembers state until it receives clear messages. Enable <em>Clear On Start</em> on <code>MidiFighterOutput</code>.</li>
+</ul>
+
+<h3>Compile error: <code>RtMidi</code> namespace not found</h3>
+<ul>
+  <li><code>jp.keijiro.rtmidi</code> isn't installed. Add the scoped registry, then install <code>Minis</code> — it pulls RtMidi in.</li>
+</ul>
+
+<hr>
+
+<p style="color: var(--muted); font-size: 0.85rem; text-align: center;">
+  MIT License &middot;
+  <a href="https://github.com/caseyfarina/midiFighterForUnity">GitHub</a> &middot;
+  <a href="https://www.midifighter.com/64setup">MF64 setup</a>
+</p>
+
+</main>
+</body>
+</html>

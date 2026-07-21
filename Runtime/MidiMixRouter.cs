@@ -9,12 +9,15 @@ namespace MidiFighter64
     /// GameObject as MidiEventManager (or any active GameObject in the scene).
     ///
     /// Event summary:
-    ///   OnKnob(channel, row, value)   — a knob was turned
-    ///   OnChannelFader(channel, value) — a channel fader moved
-    ///   OnMasterFader(value)           — the master fader moved
-    ///   OnMute(channel, isNoteOn)      — a Mute button was pressed/released
-    ///   OnRecArm(channel, isNoteOn)    — a Rec Arm button was pressed/released
-    ///   OnBankLeft / OnBankRight       — bank navigation buttons pressed
+    ///   OnKnob(channel, row, value)     — a knob was turned
+    ///   OnChannelFader(channel, value)  — a channel fader moved
+    ///   OnMasterFader(value)            — the master fader moved
+    ///   OnMute(channel, isNoteOn)       — a Mute button (Solo NOT held)
+    ///   OnSolo(channel, isNoteOn)       — a Mute button while Solo IS held
+    ///   OnRecArm(channel, isNoteOn)     — a Rec Arm button
+    ///   OnSoloModifier(isDown)          — the SOLO modifier button state
+    ///   OnBankLeft / OnBankRight        — bank navigation buttons pressed
+    ///   IsSoloHeld                       — static bool, reflects modifier state
     ///
     /// Raw variants (OnKnobRaw, OnFaderRaw, OnButtonRaw) carry the full struct
     /// for cases where you need the CC/note number or want to switch on type.
@@ -24,6 +27,18 @@ namespace MidiFighter64
     /// </summary>
     public class MidiMixRouter : MonoBehaviour
     {
+        [Header("Latching (press-to-toggle) buttons")]
+        [Tooltip("When true, Mute buttons latch on press. OnMute fires with the new latched state; note-off is ignored.")]
+        [SerializeField] bool _latchMute   = false;
+        [Tooltip("When true, Rec-Arm buttons latch on press. OnRecArm fires with the new latched state; note-off is ignored.")]
+        [SerializeField] bool _latchRecArm = false;
+
+        public bool LatchMute   { get => _latchMute;   set => _latchMute   = value; }
+        public bool LatchRecArm { get => _latchRecArm; set => _latchRecArm = value; }
+
+        readonly bool[] _muteLatched   = new bool[8];
+        readonly bool[] _recArmLatched = new bool[8];
+
         // ------------------------------------------------------------------ //
         // Public events
         // ------------------------------------------------------------------ //
@@ -49,8 +64,8 @@ namespace MidiFighter64
         /// <summary>A Rec Arm button was pressed or released. Args: channel (1–8), isNoteOn.</summary>
         public static event Action<int, bool> OnRecArm;
 
-        /// <summary>A Rec Arm button in shifted mode was pressed or released. Args: channel (1–8), isNoteOn.</summary>
-        public static event Action<int, bool> OnRecArmShifted;
+        /// <summary>The SOLO modifier button was pressed or released. Args: isDown.</summary>
+        public static event Action<bool> OnSoloModifier;
 
         /// <summary>The Bank Left button was pressed.</summary>
         public static event Action OnBankLeft;
@@ -58,11 +73,24 @@ namespace MidiFighter64
         /// <summary>The Bank Right button was pressed.</summary>
         public static event Action OnBankRight;
 
+        /// <summary>True while the SOLO modifier button is being held.</summary>
+        public static bool IsSoloHeld { get; private set; }
+
         // Raw events — useful when you need the full struct or want to fan-out
         // custom routing without subclassing.
         public static event Action<MixKnob,  float> OnKnobRaw;
         public static event Action<MixFader, float> OnFaderRaw;
         public static event Action<MixButton, bool> OnButtonRaw;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            OnKnob = null; OnChannelFader = null; OnMasterFader = null;
+            OnMute = null; OnSolo = null; OnRecArm = null;
+            OnSoloModifier = null; OnBankLeft = null; OnBankRight = null;
+            OnKnobRaw = null; OnFaderRaw = null; OnButtonRaw = null;
+            IsSoloHeld = false;
+        }
 
         // ------------------------------------------------------------------ //
         // Unity lifecycle
@@ -121,16 +149,40 @@ namespace MidiFighter64
                 OnButtonRaw?.Invoke(button, isNoteOn);
                 switch (button.type)
                 {
-                    case MidiMixButton.Mute:          OnMute?.Invoke(button.channel, isNoteOn);          break;
-                    case MidiMixButton.Solo:          OnSolo?.Invoke(button.channel, isNoteOn);          break;
-                    case MidiMixButton.RecArm:        OnRecArm?.Invoke(button.channel, isNoteOn);        break;
-                    case MidiMixButton.RecArmShifted: OnRecArmShifted?.Invoke(button.channel, isNoteOn); break;
+                    case MidiMixButton.Mute:   FireMuteOrRecArm(button.channel, isNoteOn, _latchMute,   _muteLatched,   OnMute);   break;
+                    case MidiMixButton.Solo:   OnSolo?.Invoke(button.channel, isNoteOn);   break;
+                    case MidiMixButton.RecArm: FireMuteOrRecArm(button.channel, isNoteOn, _latchRecArm, _recArmLatched, OnRecArm); break;
                 }
+                return;
+            }
+
+            if (MidiMixInputMap.IsSoloModifier(noteNumber))
+            {
+                IsSoloHeld = isNoteOn;
+                OnSoloModifier?.Invoke(isNoteOn);
                 return;
             }
 
             if (isNoteOn && MidiMixInputMap.IsBankLeft(noteNumber))  OnBankLeft?.Invoke();
             if (isNoteOn && MidiMixInputMap.IsBankRight(noteNumber)) OnBankRight?.Invoke();
+        }
+
+        static void FireMuteOrRecArm(int channel, bool isNoteOn, bool latch,
+                                     bool[] state, Action<int, bool> evt)
+        {
+            int idx = channel - 1;
+            if (idx < 0 || idx >= state.Length) return;
+
+            if (latch)
+            {
+                if (!isNoteOn) return;             // ignore note-off in latch mode
+                state[idx] = !state[idx];
+                evt?.Invoke(channel, state[idx]);  // fire with new latched state
+            }
+            else
+            {
+                evt?.Invoke(channel, isNoteOn);    // momentary
+            }
         }
     }
 }

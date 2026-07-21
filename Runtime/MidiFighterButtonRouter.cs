@@ -13,8 +13,8 @@ namespace MidiFighter64
     ///
     /// Toggle mode: OnToggle(btn, true/false) on note-on; note-off is ignored.
     ///
-    /// When driveToggleLEDs is true, toggle state changes are mirrored to
-    /// <see cref="MidiFighterOutput.Instance"/> via SetLED/ClearLED automatically.
+    /// When driveToggleLEDs / driveButtonLEDs are true, pad state is mirrored to
+    /// <see cref="MidiFighterOutput.Instance"/> automatically.
     /// </summary>
     public class MidiFighterButtonRouter : MonoBehaviour
     {
@@ -40,6 +40,31 @@ namespace MidiFighter64
         [Tooltip("LED color while a Button pad is held down.")]
         [SerializeField] MidiFighterLEDColor _buttonDownColor = MidiFighterLEDColor.BrightPink;
 
+        public MidiFighterLEDColor ButtonDownColor
+        {
+            get => _buttonDownColor;
+            set => _buttonDownColor = value;
+        }
+
+        public MidiFighterLEDColor ToggleOnColor
+        {
+            get => _toggleOnColor;
+            set => _toggleOnColor = value;
+        }
+
+        public MidiFighterLEDColor ToggleOffColor
+        {
+            get => _toggleOffColor;
+            set => _toggleOffColor = value;
+        }
+
+        /// <summary>The ScriptableObject that decides Button vs Toggle per pad. May be null.</summary>
+        public MidiFighter64ButtonConfig Config
+        {
+            get => _config;
+            set => _config = value;
+        }
+
         // ------------------------------------------------------------------
 
         /// <summary>Fired when a Button-mode pad is first pressed (note-on).</summary>
@@ -57,12 +82,26 @@ namespace MidiFighter64
         /// <summary>Fired when a Toggle-mode pad changes state (note-on only).</summary>
         public static event Action<GridButton, bool> OnToggle;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            OnButtonPress = null; OnButtonHold = null;
+            OnButtonRelease = null; OnToggle = null;
+        }
+
         // ------------------------------------------------------------------
 
         // note → elapsed hold time (Button mode)
-        readonly Dictionary<int, float> _heldPads    = new();
+        readonly Dictionary<int, float> _heldPads     = new();
         // note → toggled state (Toggle mode)
         readonly Dictionary<int, bool>  _toggleStates = new();
+        // reused per-frame to avoid List allocs in Update
+        readonly List<int>              _heldSnapshot = new(64);
+
+        // Whether we've done the initial toggle-off LED push. Deferred until
+        // MidiFighterOutput reports IsReady, because Router.OnEnable typically
+        // runs before MidiFighterOutput.Start opens the MIDI port.
+        bool _initialLedPushDone;
 
         // ------------------------------------------------------------------
 
@@ -70,7 +109,9 @@ namespace MidiFighter64
         {
             MidiEventManager.OnNoteOn  += HandleNoteOn;
             MidiEventManager.OnNoteOff += HandleNoteOff;
-            PushToggleLEDs();
+            _initialLedPushDone = false;
+            PushToggleLEDs(); // may no-op if the output port isn't open yet;
+                              // Update() retries once MidiFighterOutput.IsReady.
         }
 
         void OnDisable()
@@ -82,11 +123,22 @@ namespace MidiFighter64
 
         void Update()
         {
+            // Retry the initial LED push until MidiFighterOutput is ready.
+            if (!_initialLedPushDone
+                && MidiFighterOutput.Instance != null
+                && MidiFighterOutput.Instance.IsReady)
+            {
+                PushToggleLEDs();
+                _initialLedPushDone = true;
+            }
+
             if (_heldPads.Count == 0) return;
 
-            // Snapshot keys to avoid mutation-during-enumeration
-            var snapshot = new List<int>(_heldPads.Keys);
-            foreach (int note in snapshot)
+            // Snapshot keys to avoid mutation-during-enumeration when hold-repeat resets elapsed
+            _heldSnapshot.Clear();
+            _heldSnapshot.AddRange(_heldPads.Keys);
+
+            foreach (int note in _heldSnapshot)
             {
                 if (!_heldPads.TryGetValue(note, out float elapsed)) continue;
 
@@ -177,36 +229,72 @@ namespace MidiFighter64
 
         void DriveToggleLED(int noteNumber, bool isOn)
         {
-            var output = MidiFighterOutput.Instance;
-            if (output == null) return;
-            output.SetLED(noteNumber, (int)(isOn ? _toggleOnColor : _toggleOffColor));
+            MidiFighterLEDColor color;
+            if (isOn)
+            {
+                // Per-pad override wins over the global _toggleOnColor.
+                color = GetPerPadColorOr(noteNumber, _toggleOnColor);
+            }
+            else color = _toggleOffColor;
+            SetPadColor(noteNumber, color);
         }
 
         void DriveButtonLED(int noteNumber, bool isDown)
         {
-            var output = MidiFighterOutput.Instance;
-            if (output == null) return;
-            output.SetLED(noteNumber, (int)(isDown ? _buttonDownColor : _toggleOffColor));
+            MidiFighterLEDColor color;
+            if (isDown)
+            {
+                color = GetPerPadColorOr(noteNumber, _buttonDownColor);
+            }
+            else color = MidiFighterLEDColor.Off;
+            SetPadColor(noteNumber, color);
         }
+
+        MidiFighterLEDColor GetPerPadColorOr(int noteNumber, MidiFighterLEDColor fallback)
+        {
+            if (_config == null) return fallback;
+            var btn = MidiFighter64InputMap.FromNote(noteNumber);
+            var c = _config.GetColor(btn);
+            return c == MidiFighterLEDColor.Off ? fallback : c;
+        }
+
+        static void SetPadColor(int noteNumber, MidiFighterLEDColor color)
+            => MidiFighterOutput.Instance?.SetLED(noteNumber, color);
+
+        MidiFighterLEDColor _lastPreviewColor;
 
         void OnValidate()
         {
             if (!Application.isPlaying) return;
-            var output = MidiFighterOutput.Instance;
-            if (output == null) return;
-            for (int n = MidiFighter64InputMap.NOTE_OFFSET; n <= MidiFighter64InputMap.NOTE_MAX; n++)
-                output.SetLED(n, (int)_toggleOnColor);
+            if (_toggleOnColor == _lastPreviewColor) return;
+            _lastPreviewColor = _toggleOnColor;
+            MidiFighterOutput.Instance?.SetAllLEDs((int)_toggleOnColor);
         }
 
         /// <summary>
-        /// Pushes the current toggle state of every tracked pad to the hardware LEDs.
-        /// Called automatically on OnEnable when driveToggleLEDs is true.
+        /// Pushes toggle-state LED colors to the hardware for every pad that is
+        /// currently in Toggle mode (per the assigned <see cref="MidiFighter64ButtonConfig"/>).
+        /// Untouched pads receive the toggle-off color so they visually match the
+        /// state that toggling them will exit. Called automatically on OnEnable
+        /// (and retried from Update once the output port is open).
         /// </summary>
         public void PushToggleLEDs()
         {
             if (!_driveToggleLEDs) return;
-            foreach (var kvp in _toggleStates)
-                DriveToggleLED(kvp.Key, kvp.Value);
+
+            // Explicitly push toggle-off (or current known state) to every pad
+            // whose config mode is Toggle. Prevents "invisible" pads at launch
+            // that only light up after the first press.
+            for (int i = 0; i < 64; i++)
+            {
+                int note = MidiFighter64InputMap.NOTE_OFFSET + i; // any 36-99 works; we resolve mode via config
+                var btn  = MidiFighter64InputMap.FromNote(note);
+                var mode = _config != null ? _config.GetMode(btn) : MidiFighterButtonMode.Button;
+                if (mode != MidiFighterButtonMode.Toggle) continue;
+
+                bool state = _toggleStates.TryGetValue(note, out bool s) && s;
+                DriveToggleLED(note, state);
+            }
         }
     }
 }

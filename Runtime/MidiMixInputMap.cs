@@ -4,22 +4,18 @@ namespace MidiFighter64
 {
     /// <summary>
     /// Button type for the Akai MIDI Mix.
-    /// Each channel strip has a Mute button and a Rec Arm button.
+    /// Each channel strip has a Mute button (which doubles as Solo while the SOLO
+    /// modifier is held) and a Rec Arm button.
     /// </summary>
     public enum MidiMixButton
     {
         Mute,
         /// <summary>
-        /// Same physical Mute buttons in Solo mode (SOLO toggle engaged on hardware).
-        /// The firmware emits a different note number set when this mode is active.
+        /// The Mute button while the SOLO modifier button is held. Hardware emits
+        /// a different note (base + 1) when SOLO is engaged.
         /// </summary>
         Solo,
         RecArm,
-        /// <summary>
-        /// Same physical Rec Arm buttons in shifted mode (base note + 32).
-        /// Activated by the Bank Left/Bank Right shift function.
-        /// </summary>
-        RecArmShifted,
     }
 
     /// <summary>A knob on the Akai MIDI Mix (3 rows × 8 channels).</summary>
@@ -49,17 +45,22 @@ namespace MidiFighter64
     /// <summary>
     /// Default MIDI mapping for the Akai MIDI Mix.
     ///
-    /// All controls operate on MIDI channel 1 out of the box.
+    /// All controls transmit on MIDI channel 1 by default.
     ///
-    /// Physical layout per channel strip (left→right, top→bottom):
-    ///   Knob Row 1  | Knob Row 2  | Knob Row 3
-    ///   [ MUTE ]    [ REC ARM ]
-    ///   [  Fader  ]
+    /// Physical layout per channel strip (top → bottom):
+    ///   Knob Row 1
+    ///   Knob Row 2
+    ///   Knob Row 3
+    ///   [ MUTE ]
+    ///   [ REC ARM ]
+    ///   [ Fader   ]
     ///
-    /// Additionally there are BANK LEFT and BANK RIGHT buttons.
+    /// Plus a shared SOLO modifier button and BANK LEFT / BANK RIGHT / SEND ALL
+    /// buttons on the right side. Holding SOLO changes the Mute buttons' emitted
+    /// note (they send the Solo note set instead).
     ///
-    /// CC numbers were verified against the Akai MIDImix hardware
-    /// default firmware and community documentation (AkaiGoBRRR project).
+    /// Values verified against the Carnelian Ableton control-surface script and
+    /// the Bitwig community controller script (mfeyx/akai-midimix-bitwig).
     /// </summary>
     public static class MidiMixInputMap
     {
@@ -85,7 +86,7 @@ namespace MidiFighter64
         public static readonly int[] FaderCC = { 19, 23, 27, 31, 49, 53, 57, 61 };
 
         /// <summary>CC number for the master fader.</summary>
-        public const int MasterFaderCC = 127;
+        public const int MasterFaderCC = 62;
 
         // ------------------------------------------------------------------ //
         // Note numbers
@@ -101,19 +102,17 @@ namespace MidiFighter64
         /// </summary>
         public static readonly int[] SoloNotes = { 2, 5, 8, 11, 14, 17, 20, 23 };
 
-        /// <summary>Note numbers for the 8 Rec Arm buttons in normal mode (0-based index).</summary>
+        /// <summary>Note numbers for the 8 Rec Arm buttons (0-based index).</summary>
         public static readonly int[] RecArmNotes = { 3, 6, 9, 12, 15, 18, 21, 24 };
-
-        /// <summary>
-        /// Shifted Rec Arm note numbers (base + 32), active when the Bank shift function is used.
-        /// </summary>
-        public static readonly int[] RecArmShiftedNotes = { 35, 38, 41, 44, 47, 50, 53, 56 };
 
         /// <summary>Note number for the Bank Left button.</summary>
         public const int BankLeftNote  = 25;
 
         /// <summary>Note number for the Bank Right button.</summary>
         public const int BankRightNote = 26;
+
+        /// <summary>Note number for the SOLO modifier button. Held to make Mute buttons emit Solo notes.</summary>
+        public const int SoloModifierNote = 27;
 
         // ------------------------------------------------------------------ //
         // Reverse-lookup tables (built once at class initialisation)
@@ -141,14 +140,12 @@ namespace MidiFighter64
 
             for (int ch = 0; ch < CHANNEL_COUNT; ch++)
             {
-                int muteNote          = MuteNotes[ch];
-                int soloNote          = SoloNotes[ch];
-                int recArmNote        = RecArmNotes[ch];
-                int recArmShiftedNote = RecArmShiftedNotes[ch];
-                _buttonByNote[muteNote]          = new MixButton { channel = ch + 1, type = MidiMixButton.Mute,          noteNumber = muteNote };
-                _buttonByNote[soloNote]          = new MixButton { channel = ch + 1, type = MidiMixButton.Solo,          noteNumber = soloNote };
-                _buttonByNote[recArmNote]        = new MixButton { channel = ch + 1, type = MidiMixButton.RecArm,        noteNumber = recArmNote };
-                _buttonByNote[recArmShiftedNote] = new MixButton { channel = ch + 1, type = MidiMixButton.RecArmShifted, noteNumber = recArmShiftedNote };
+                int muteNote   = MuteNotes[ch];
+                int soloNote   = SoloNotes[ch];
+                int recArmNote = RecArmNotes[ch];
+                _buttonByNote[muteNote]   = new MixButton { channel = ch + 1, type = MidiMixButton.Mute,   noteNumber = muteNote };
+                _buttonByNote[soloNote]   = new MixButton { channel = ch + 1, type = MidiMixButton.Solo,   noteNumber = soloNote };
+                _buttonByNote[recArmNote] = new MixButton { channel = ch + 1, type = MidiMixButton.RecArm, noteNumber = recArmNote };
             }
         }
 
@@ -177,7 +174,8 @@ namespace MidiFighter64
         public static bool TryGetButton(int noteNumber, out MixButton button)
             => _buttonByNote.TryGetValue(noteNumber, out button);
 
-        public static bool IsBankLeft(int noteNumber)  => noteNumber == BankLeftNote;
-        public static bool IsBankRight(int noteNumber) => noteNumber == BankRightNote;
+        public static bool IsBankLeft(int noteNumber)      => noteNumber == BankLeftNote;
+        public static bool IsBankRight(int noteNumber)     => noteNumber == BankRightNote;
+        public static bool IsSoloModifier(int noteNumber)  => noteNumber == SoloModifierNote;
     }
 }

@@ -3,7 +3,8 @@
     "rootNamespace": "MidiFighter64.Samples",
     "references": [
         "MidiFighter64.Runtime",
-        "Unity.TextMeshPro"
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

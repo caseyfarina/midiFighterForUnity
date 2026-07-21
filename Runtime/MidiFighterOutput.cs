@@ -6,9 +6,8 @@ namespace MidiFighter64
 {
     /// <summary>
     /// Hardware LED color palette for the Midi Fighter 64 (velocity → color, Ch3).
-    /// Values confirmed from MF64 User Guide Fig 2.
+    /// Values confirmed on hardware, firmware 24 Jul 2017 (expanded color palette).
     /// </summary>
-    // Velocities confirmed on hardware, firmware 24 Jul 2017 (expanded color palette).
     public enum MidiFighterLEDColor
     {
         Off        = 0,
@@ -19,6 +18,26 @@ namespace MidiFighter64
         DarkBlue   = 39,
         BrightPink = 56,
         DarkPink   = 59,
+    }
+
+    /// <summary>
+    /// Approximate RGB values matching each MF64 palette entry. Useful for keeping
+    /// on-screen visuals in sync with hardware LED colors.
+    /// </summary>
+    public static class MidiFighterLEDColorExtensions
+    {
+        public static UnityEngine.Color ToUnityColor(this MidiFighterLEDColor c) => c switch
+        {
+            MidiFighterLEDColor.Off        => new UnityEngine.Color(0.05f, 0.05f, 0.06f),
+            MidiFighterLEDColor.DarkGrey   => new UnityEngine.Color(0.25f, 0.25f, 0.27f),
+            MidiFighterLEDColor.Grey       => new UnityEngine.Color(0.55f, 0.55f, 0.58f),
+            MidiFighterLEDColor.White      => UnityEngine.Color.white,
+            MidiFighterLEDColor.BrightBlue => new UnityEngine.Color(0.25f, 0.55f, 1.00f),
+            MidiFighterLEDColor.DarkBlue   => new UnityEngine.Color(0.10f, 0.20f, 0.60f),
+            MidiFighterLEDColor.BrightPink => new UnityEngine.Color(1.00f, 0.30f, 0.75f),
+            MidiFighterLEDColor.DarkPink   => new UnityEngine.Color(0.55f, 0.15f, 0.40f),
+            _                              => UnityEngine.Color.magenta,
+        };
     }
 
 
@@ -42,18 +61,27 @@ namespace MidiFighter64
     {
         public static MidiFighterOutput Instance { get; private set; }
 
+        const int COLOR_CHANNEL_INDEX     = 2; // MIDI Ch3
+        const int ANIMATION_CHANNEL_INDEX = 3; // MIDI Ch4
+
         [Header("LED Settings")]
         [Tooltip("MIDI channel layer (0-based). 2 = Channel 3 (color, default). 3 = Channel 4 (animation).")]
         [Range(0, 3)]
-        public int ledChannelIndex = 2;
+        public int ledChannelIndex = COLOR_CHANNEL_INDEX;
 
-        // ------------------------------------------------------------------
+        [Header("Startup")]
+        [Tooltip("Send Note Off (velocity 0) to all 64 pads immediately after connecting, clearing any LED state left over from a previous session.")]
+        [SerializeField] bool _clearOnStart = true;
 
-        MidiOut _probe;   // enumerate / hotplug (never opened to a specific port)
-        MidiOut _output;  // open port handle used for SendMessage
-        int     _lastPortCount = -1;
+        const float PORT_POLL_INTERVAL = 1.0f; // seconds between hotplug checks
 
-        // ------------------------------------------------------------------
+        MidiOut _probe;
+        MidiOut _output;
+        int     _lastPortCount    = -1;
+        float   _nextPortPollTime;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => Instance = null;
 
         void Awake()
         {
@@ -64,26 +92,30 @@ namespace MidiFighter64
         void Start()
         {
             _probe = MidiOut.Create();
-            _lastPortCount = _probe.PortCount;
+            _lastPortCount     = _probe.PortCount;
+            _nextPortPollTime  = Time.unscaledTime + PORT_POLL_INTERVAL;
             TryOpenPort();
+            if (_clearOnStart) ClearAllLEDs();
         }
 
         void Update()
         {
             if (_probe == null || _probe.IsInvalid) return;
+            if (Time.unscaledTime < _nextPortPollTime) return;
+            _nextPortPollTime = Time.unscaledTime + PORT_POLL_INTERVAL;
+
             int count = _probe.PortCount;
-            if (count != _lastPortCount)
-            {
-                _lastPortCount = count;
-                CloseOutput();
-                TryOpenPort();
-            }
+            if (count == _lastPortCount) return;
+            _lastPortCount = count;
+            CloseOutput();
+            TryOpenPort();
         }
 
         void OnDestroy()
         {
-            CloseOutput();
-            if (_probe != null && !_probe.IsInvalid) _probe.Dispose();
+            try { if (_clearOnStart) ClearAllLEDs(); } catch { }
+            try { CloseOutput(); } catch { }
+            try { if (_probe != null && !_probe.IsInvalid) _probe.Dispose(); } catch { }
             _probe = null;
             if (Instance == this) Instance = null;
         }
@@ -152,9 +184,23 @@ namespace MidiFighter64
         /// Velocity 0 reverts to the Utility inactive color.
         /// </summary>
         /// <param name="noteNumber">Hardware MIDI note (36–99).</param>
-        /// <param name="velocity">Color velocity (0–127). See <see cref="MidiFighterColor"/>.</param>
+        /// <param name="velocity">Color velocity (0–127). See <see cref="MidiFighterLEDColor"/>.</param>
         public void SetLED(int noteNumber, int velocity)
             => SendNoteOn(ledChannelIndex, noteNumber, velocity);
+
+        /// <summary>Sets the LED color for a pad using the palette enum.</summary>
+        public void SetLED(int noteNumber, MidiFighterLEDColor color)
+            => SendNoteOn(ledChannelIndex, noteNumber, (int)color);
+
+        /// <summary>True once the MF64 output port is open and writes will actually reach the hardware.</summary>
+        public bool IsReady => _output != null && !_output.IsInvalid;
+
+        /// <summary>Sends the same velocity to every one of the 64 pads.</summary>
+        public void SetAllLEDs(int velocity)
+        {
+            for (int n = MidiFighter64InputMap.NOTE_OFFSET; n <= MidiFighter64InputMap.NOTE_MAX; n++)
+                SetLED(n, velocity);
+        }
 
         /// <summary>
         /// Sends velocity 0 for this note, reverting it to the Utility inactive color.
@@ -163,11 +209,7 @@ namespace MidiFighter64
         public void ClearLED(int noteNumber) => SetLED(noteNumber, 0);
 
         /// <summary>Clears all 64 LEDs.</summary>
-        public void ClearAllLEDs()
-        {
-            for (int n = MidiFighter64InputMap.NOTE_OFFSET; n <= MidiFighter64InputMap.NOTE_MAX; n++)
-                ClearLED(n);
-        }
+        public void ClearAllLEDs() => SetAllLEDs(0);
 
         /// <summary>
         /// Sends an animation trigger on Channel 4 (layer index 3).
@@ -176,6 +218,6 @@ namespace MidiFighter64
         /// <param name="noteNumber">Hardware note (36–99); offset applied internally.</param>
         /// <param name="velocity">Animation index / intensity (0–127).</param>
         public void SetAnimation(int noteNumber, int velocity)
-            => SendNoteOn(3, noteNumber - MidiFighter64InputMap.NOTE_OFFSET, velocity);
+            => SendNoteOn(ANIMATION_CHANNEL_INDEX, noteNumber - MidiFighter64InputMap.NOTE_OFFSET, velocity);
     }
 }

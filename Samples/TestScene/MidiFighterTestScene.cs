@@ -24,16 +24,14 @@ namespace MidiFighter64.Samples
         // Constants
         // ------------------------------------------------------------------ //
 
-        const int   GRID          = MidiFighter64InputMap.GRID_SIZE;  // 8
-        const int   NOTE_OFFSET   = MidiFighter64InputMap.NOTE_OFFSET; // 36
+        const int   GRID          = MidiFighter64InputMap.GRID_SIZE;
         const float SPHERE_SIZE   = 0.85f;
         const float SPACING       = 1.15f;
         const float WAVE_INTERVAL = 0.08f;  // seconds between column steps
         const int   WAVE_VELOCITY = 100;    // LED brightness during wave
 
-        static readonly Color COLOR_IDLE    = new Color(0.12f, 0.12f, 0.14f);
-        static readonly Color COLOR_PRESSED = new Color(0.25f, 0.55f, 1.00f);
-        static readonly Color COLOR_WAVE    = new Color(1.00f, 0.75f, 0.10f);
+        static readonly Color COLOR_IDLE = new Color(0.12f, 0.12f, 0.14f);
+        static readonly Color COLOR_WAVE = new Color(1.00f, 0.75f, 0.10f);
 
         // ------------------------------------------------------------------ //
         // State
@@ -43,7 +41,9 @@ namespace MidiFighter64.Samples
         readonly Material[] _mats    = new Material[GRID * GRID];
         readonly bool[]     _pressed = new bool[GRID * GRID];
 
-        MidiFighterOutput _output;
+        MidiFighterOutput       _output;
+        MidiFighterButtonRouter _router;
+        WaitForSeconds          _waveWait;
         bool _waveRunning;
 
         // ------------------------------------------------------------------ //
@@ -53,6 +53,7 @@ namespace MidiFighter64.Samples
         void Awake()
         {
             EnsureCoreComponents();
+            _waveWait = new WaitForSeconds(WAVE_INTERVAL);
             BuildScene();
         }
 
@@ -68,21 +69,22 @@ namespace MidiFighter64.Samples
             MidiEventManager.OnNoteOff -= HandleNoteOff;
         }
 
+        void OnDestroy()
+        {
+            // Renderer.material auto-instantiates; release the copies.
+            for (int i = 0; i < _mats.Length; i++)
+                if (_mats[i] != null) Destroy(_mats[i]);
+        }
+
         // ------------------------------------------------------------------ //
         // Scene construction
         // ------------------------------------------------------------------ //
 
         void EnsureCoreComponents()
         {
-            if (Object.FindFirstObjectByType<MidiEventManager>() == null)
-                new GameObject("MidiEventManager").AddComponent<MidiEventManager>();
-
-            if (Object.FindFirstObjectByType<UnityMainThreadDispatcher>() == null)
-                new GameObject("UnityMainThreadDispatcher").AddComponent<UnityMainThreadDispatcher>();
-
+            MidiSceneBootstrapper.EnsureCoreComponents(transform);
+            _router = Object.FindFirstObjectByType<MidiFighterButtonRouter>();
             _output = Object.FindFirstObjectByType<MidiFighterOutput>();
-            if (_output == null)
-                _output = new GameObject("MidiFighterOutput").AddComponent<MidiFighterOutput>();
         }
 
         void BuildScene()
@@ -135,14 +137,13 @@ namespace MidiFighter64.Samples
                 go.transform.localPosition  = new Vector3(c * SPACING, -r * SPACING, 0f);
                 go.transform.localScale     = Vector3.one * SPHERE_SIZE;
 
-                var mat = new Material(Shader.Find("Standard"))
-                {
-                    color = COLOR_IDLE
-                };
-                mat.SetFloat("_Metallic",    0.1f);
-                mat.SetFloat("_Glossiness",  0.65f);
-
-                go.GetComponent<Renderer>().material = mat;
+                // Reuse the material Unity's CreatePrimitive assigned — it already has
+                // the correct shader for the active render pipeline (URP or BiRP).
+                var mat = go.GetComponent<Renderer>().material;
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", COLOR_IDLE);
+                mat.color = COLOR_IDLE;
+                if (mat.HasProperty("_Metallic"))   mat.SetFloat("_Metallic",   0.1f);
+                if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.65f);
                 _mats[r * GRID + c] = mat;
             }
         }
@@ -205,18 +206,16 @@ namespace MidiFighter64.Samples
         {
             if (!MidiFighter64InputMap.IsInRange(note)) return;
             var btn = MidiFighter64InputMap.FromNote(note);
-            int idx = (btn.row - 1) * GRID + (btn.col - 1);
-            _pressed[idx] = true;
-            SetColor(idx, COLOR_PRESSED);
+            _pressed[btn.linearIndex] = true;
+            SetColor(btn.linearIndex, _router.ButtonDownColor.ToUnityColor());
         }
 
         void HandleNoteOff(int note)
         {
             if (!MidiFighter64InputMap.IsInRange(note)) return;
             var btn = MidiFighter64InputMap.FromNote(note);
-            int idx = (btn.row - 1) * GRID + (btn.col - 1);
-            _pressed[idx] = false;
-            SetColor(idx, COLOR_IDLE);
+            _pressed[btn.linearIndex] = false;
+            SetColor(btn.linearIndex, COLOR_IDLE);
         }
 
         // ------------------------------------------------------------------ //
@@ -249,7 +248,7 @@ namespace MidiFighter64.Samples
                     _output?.SetLED(note, WAVE_VELOCITY);
                 }
 
-                yield return new WaitForSeconds(WAVE_INTERVAL);
+                yield return _waveWait;
 
                 // Extinguish previous column
                 if (c > 0)
@@ -283,8 +282,10 @@ namespace MidiFighter64.Samples
 
         void SetColor(int flatIndex, Color color)
         {
-            if (_mats[flatIndex] != null)
-                _mats[flatIndex].color = color;
+            var mat = _mats[flatIndex];
+            if (mat == null) return;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            mat.color = color;
         }
 
         /// <summary>

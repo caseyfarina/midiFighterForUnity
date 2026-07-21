@@ -36,6 +36,13 @@ namespace MidiFighter64
         // Raw grid button event for any custom routing (button, isNoteOn)
         public static event Action<GridButton, bool> OnGridButton;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            OnRow1 = null; OnGridPreset = null; OnGridRandomize = null;
+            OnRow5 = null; OnSlotToggle = null; OnGridButton = null;
+        }
+
         void OnEnable()
         {
             MidiEventManager.OnNoteOn  += HandleNoteOn;

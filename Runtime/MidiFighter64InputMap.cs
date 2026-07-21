@@ -68,10 +68,9 @@ namespace MidiFighter64
         {
             if (row < 1 || row > GRID_SIZE || col < 1 || col > GRID_SIZE) return -1;
 
-            int half           = col <= 4 ? 0 : 1;
-            int halfBase       = half == 0 ? 36 : 68;
-            int colInHalf      = (col - 1) - (half * 4); // 0-3
-            int physicalRow    = GRID_SIZE - row;         // invert Y: row 1 (top) → physicalRow 7 (top)
+            int halfBase    = col <= 4 ? 36 : 68;
+            int colInHalf   = (col - 1) % 4;
+            int physicalRow = GRID_SIZE - row; // invert Y: row 1 (top) → physicalRow 7 (top of hardware)
             return halfBase + physicalRow * 4 + colInHalf;
         }
     }

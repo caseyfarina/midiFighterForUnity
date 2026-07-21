@@ -2,7 +2,9 @@
     "name": "MidiFighter64.Samples.Editor",
     "rootNamespace": "MidiFighter64.Samples.Editor",
     "references": [
-        "MidiFighter64.Samples"
+        "MidiFighter64.Samples",
+        "MidiFighter64.Runtime",
+        "MidiFighter64.Editor"
     ],
     "includePlatforms": [
         "Editor"

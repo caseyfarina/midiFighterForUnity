@@ -1,5 +1,4 @@
 using UnityEngine;
-using MidiFighter64;
 
 namespace MidiFighter64.Samples
 {
@@ -15,19 +14,8 @@ namespace MidiFighter64.Samples
 
         private float _speed = 0f;
 
-        private void OnEnable()
-        {
-            MidiMixRouter.OnKnob += HandleKnob;
-            OrbitingCameraController.OnOrbitActivated += ResetSpeed;
-        }
-
-        private void OnDisable()
-        {
-            MidiMixRouter.OnKnob -= HandleKnob;
-            OrbitingCameraController.OnOrbitActivated -= ResetSpeed;
-        }
-
-        private void ResetSpeed() => _speed = 0f;
+        private void OnEnable()  => MidiMixRouter.OnKnob += HandleKnob;
+        private void OnDisable() => MidiMixRouter.OnKnob -= HandleKnob;
 
         private void HandleKnob(int channel, int row, float value)
         {
