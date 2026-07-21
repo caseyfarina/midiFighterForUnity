@@ -102,6 +102,21 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 
 ## Known issues / future work
 
+- **BUG: with the MF64 section hidden, the drawer under-fills badly.** Reported 2026-07-21: Show Midi Fighter 64 off, Show MIDI Mix on, Screen Fill 1.0 — the mixer renders at roughly 40% of the display instead of filling it.
+
+  Cause is a one-sided condition in `DrawerHeight`:
+
+  ```csharp
+  float DrawerHeight => (2f * DrawerPadY) + (2f * SectionPad) + GridSide
+                      + (_showMidiMix ? Mf64SectionGap + MixSectionHeight : 0f);
+  ```
+
+  `_showMidiMix` is accounted for, `_showMf64` is not — `GridSide` (600 design units) is added unconditionally. So with only the mixer shown, the derived reference is ~1082 units tall against ~452 units of real content. `Expand` scales by `min(screenW/refW, screenH/refH)`, height binds, and everything shrinks by the ratio of the phantom 600 units. Screen Fill still "works", it's just hitting the fraction against a drawer that's mostly empty space.
+
+  The fix is to make the term conditional the same way, and to drop `Mf64SectionGap` when either section is absent (the gap only exists *between* two sections). Both flags off is already a real case — the message strip gets its own panel — so the expression has to handle all four combinations, and `DrawerWidth` should be reviewed at the same time: it hard-codes `GridSide` too, which is currently harmless only because the mix section is deliberately built to the same width.
+
+  Worth adding a Log Layout Report assertion for it: with one section hidden, `drawer resolved` height should stay close to `canvas × ScreenFill`, and today it doesn't.
+
 - **First MIDI event per channel is often lost.** Minis creates the device on first event and subscribes callbacks *after*, so event #1 slips through. Would need a fix in Minis or a warmup message. Workaround: doc note tells users to press twice on startup.
 - **RtMidi cross-platform** — package works on Windows. macOS/Linux paths through RtMidi should work but haven't been hardware-tested.
 - **MIDI Mix bank/shift note remapping** — the mixer sends different notes when Bank Left/Right is active. Currently the router just fires the raw event; a "bank-aware" mode could remap them.

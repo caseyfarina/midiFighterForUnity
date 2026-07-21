@@ -196,6 +196,8 @@ The **F-keys only** are gated by `EnableFunctionKeys` (**Enable Function Keys** 
 
 Section visibility is baked into the UI tree, so toggling it rebuilds all views. Widget "seen" opacity resets on rebuild; the hidden state survives. The event message strip normally lives in the MIDI Mix utility row — with Mix hidden it's rebuilt as its own panel so the readout survives. Hiding the mix section also reclaims its height: `DrawerHeight` drops, the derived reference shrinks, and the pad grid grows to fill the same `ScreenFraction`.
 
+> **Known bug — the reverse doesn't hold.** `DrawerHeight` adds `GridSide` unconditionally, so hiding the **MF64** section does *not* reclaim its 600 design units. With only the mixer shown at `Screen Fill 1.0` the drawer renders at roughly 40% of the display. See DEVNOTES for the diagnosis and the shape of the fix; don't treat under-filling in that configuration as a `ScreenFraction` or reference-resolution problem.
+
 **Adding a serialized field to `MidiSceneBootstrapper`?** Add a guard to `NormalizeInlineArrays`. Scenes saved before the field existed deserialize it to zero — field initializers do **not** re-run for already-serialized components — so a new `Screen Fill` arrives as `0` and collapses the drawer. This has bitten twice.
 
 **Layout** — read this before changing any drawer sizing. Every rule below fixed a specific bug; the obvious "simplification" for each is the bug.
