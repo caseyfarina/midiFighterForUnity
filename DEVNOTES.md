@@ -6,9 +6,9 @@ Internal notes for people modifying **this package** (not for consumers). See `C
 
 ## Repo state
 
-**Branch layout:** `main` = shipped, feature branches merged with tagged releases.
+**Branch layout: work directly on `main`.** As of 2026-07-21 this is a single-developer repo and the feature-branch workflow was retired — it added ceremony without review value. Commit to `main`; don't create a feature branch unless there's a specific reason to, and don't assume the usual "branch before committing" default applies here.
 
-Current: **1.3.0**, tagged `v1.3.0`, on `main`. Development continues on `feat/midimix-and-button-modes`, which is level with `main`.
+Current: **1.3.0**, tagged `v1.3.0`, on `main`.
 
 **Tag whenever you bump `package.json`.** Consumers install a UPM package from a git URL pinned to a tag (`…midiFighterForUnity.git#v1.3.0`); untagged, that URL resolves to whatever `main` happens to be. The repo went its first three versions with no tags at all, which made 1.0.0–1.2.0 unretrievable after the fact.
 
