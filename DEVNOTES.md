@@ -24,7 +24,14 @@ The `Samples~/TestScene/` folder is hidden from Unity by the `~` suffix (UPM con
 
 If you keep the tilde and edit source, changes won't be picked up until the user re-imports the sample via Package Manager — which is fine for consumers but slow for development.
 
-**The folder is currently `Samples/` (no tilde)** — i.e. in development state. `package.json` still declares the sample path as `Samples~/TestScene`, so that path must be restored before a release or consumers can't import the sample. Note this also covers `Samples/TestScene/UI/Resources/`, which holds the bundled drawer font.
+**Deliberate current state: the folder stays `Samples/` (no tilde).** This repo has one user, who works in the editor, so the sample is kept always-compiled rather than being renamed back and forth. Don't "fix" it.
+
+`package.json` still declares the sample path as `Samples~/TestScene`. That mismatch is knowingly tolerated — its only effect is that Package Manager's **Import** button for the Test Scene sample won't resolve, which nobody here uses. Everything else (compilation, `Resources.Load` for the bundled font, the Tools menu scene generator) works from `Samples/`.
+
+**Before publishing to any consumer**, restore the UPM layout:
+1. Rename `Samples/` → `Samples~/`.
+2. Confirm `package.json`'s `samples[0].path` reads `Samples~/TestScene`.
+3. Update the paths in `Third Party Notices.md`, which currently point at `Samples/`.
 
 ---
 
@@ -81,7 +88,7 @@ C:\Users\casey\AppData\Local\Unity\Editor\Editor.log
 - **RtMidi cross-platform** — package works on Windows. macOS/Linux paths through RtMidi should work but haven't been hardware-tested.
 - **MIDI Mix bank/shift note remapping** — the mixer sends different notes when Bank Left/Right is active. Currently the router just fires the raw event; a "bank-aware" mode could remap them.
 - **Consumer-facing MidiSceneBootstrapper** — currently in `Samples~/`. Consider moving `MidiSceneBootstrapper.EnsureCoreComponents` (or a subset) to Runtime so consumers can bootstrap without importing the sample.
-- **Bundled font has no license file.** `Samples~/TestScene/UI/Resources/CossetteTitre-Regular.ttf` is redistributed with the package, but no accompanying license shipped with it. If it's OFL (most Google Fonts) redistribution requires including `OFL.txt` and the copyright notice. **Confirm the licence and add a `Third Party Notices.md` at the package root before any public release.**
+- ~~Bundled font has no license file.~~ **Resolved.** Cossette Titre is a Google Font under SIL OFL 1.1 (Copyright 2025 The Cossette Project Authors). The upstream `OFL.txt` now sits beside the font in `Samples/TestScene/UI/Resources/`, and `Third Party Notices.md` at the package root records it. No Reserved Font Names, so the font may be renamed or modified. Redistribution inside a larger work is expressly permitted; selling the font on its own is not.
 - **"No Theme Style Sheet set to PanelSettings" warning** on every drawer build. Accurate — `BuildView` only assigns `themeStyleSheet` when one is supplied. Harmless here because every element is styled explicitly, but it's console noise. Fix: ship a `.tss` theme asset in the sample's `Resources` and load it alongside the font.
 - **`MixChromeHeight` is the last estimated number in the layout.** `MixSectionHeight` is now derived (`StripHeight` from the widget constants + `MixChromeHeight`), but the chrome — master row, utility row, section padding — depends on label metrics, so the bundled font and type sizes shift it. It only affects how exactly `ScreenFill` is hit; it can never make the pad grid non-square. Correct it from the `mix section h` line of the Log Layout Report.
 - **Drawer fields are duplicated** on `MidiStatusDrawer` and `MidiSceneBootstrapper` (`Placement`, `ScreenFraction`, `ShowMf64`, `ShowMidiMix`, fisheye, font). The bootstrapper wins at `Awake`, but both sets are inspector-visible and read as conflicting in edit mode. `[HideInInspector]` on the drawer's copies would settle it.

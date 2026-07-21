@@ -10,7 +10,8 @@
   - **Show Midi Fighter 64 / Show MIDI Mix** — run a single controller without a dead panel. With the mix section hidden the message strip is rebuilt as its own panel, and the pad grid grows to reclaim the freed height.
   - **Enable MF64 Fisheye** — was only reachable on `MidiStatusDrawer`.
   - **Drawer Font** — optional typeface override.
-- **Bundled font** — `CossetteTitre-Regular.ttf` ships in `Samples~/TestScene/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font if the Resources folder is stripped.
+- **`Third Party Notices.md`** at the package root, plus the upstream `OFL.txt` beside the font. Cossette Titre is SIL OFL 1.1 (Copyright 2025 The Cossette Project Authors); the package's own MIT licence does not cover it.
+- **Bundled font** — `CossetteTitre-Regular.ttf` ships in `Samples/TestScene/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font if the Resources folder is stripped.
 - **`MidiStatusDrawer` public API** — `Placement`, `ScreenFraction`, `ShowMf64`, `ShowMidiMix`, `SetVisibleSections(mf64, mix)`, `FontOverride`, `EnableMf64Fisheye`, `LogLayoutDiagnostics`.
 - **Log Layout Report** (bootstrapper, off by default) — dumps one resolved-geometry report to the console after the drawer is first shown: screen size, derived reference resolution, drawer/grid/cell dimensions, screen coverage, mixer-vs-grid column widths, measured mix section height. Reads `resolvedStyle` only, so it cannot affect layout.
 
