@@ -66,7 +66,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 40px 0; }
 
 <h1>Midi Fighter 64 for Unity</h1>
 <p class="subtitle">
-  <span class="badge">v1.1.0</span>
+  <span class="badge">v1.3.0</span>
   <span class="badge">Unity 6+</span>
   <span class="badge">URP / BiRP</span>
   MIDI input + LED output bridge for the DJ Tech Tools Midi Fighter 64 and Akai MIDI Mix.
@@ -82,6 +82,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 40px 0; }
     <li><a href="#leds">LED output</a></li>
     <li><a href="#palette">LED color palette</a></li>
     <li><a href="#midimix">Akai MIDI Mix</a></li>
+    <li><a href="#drawer">Status drawer overlay</a></li>
     <li><a href="#testscene">Test scene</a></li>
     <li><a href="#api">API reference</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
@@ -290,6 +291,36 @@ if (MidiMixRouter.IsSoloHeld) { /* ... */ }
   <strong>Send All button:</strong> pressing it causes the hardware to re-emit all 33 CC messages (24 knobs + 8 channel faders + master fader). No dedicated note is sent — the router just sees a burst of CC events.
 </div>
 
+<h3 id="midimix-latch">Latching Mute / Rec-Arm</h3>
+<p>The Mute and Rec-Arm buttons are <em>momentary</em> in hardware, but the router latches them by default: <code>LatchMute</code> and <code>LatchRecArm</code> are both <code>true</code>. Press once to turn on, press again to turn off.</p>
+
+<pre><code>// With latching on (the default), OnMute fires once per press and carries
+// the NEW latched state. Note-off is ignored.
+MidiMixRouter.OnMute += (ch, isOn) => { /* isOn = latched state */ };
+
+// Untick LatchMute / LatchRecArm for momentary behavior, where the events
+// fire on both note-on and note-off with the raw button state.
+</code></pre>
+
+<p><code>MidiMixOutput</code> mirrors these router events rather than raw MIDI, so the hardware LED holds for as long as the button is latched on, with no code from you. The status drawer holds its pad filled to match.</p>
+
+<div class="callout">
+  <strong><code>OnSolo</code> is always momentary.</strong> The SOLO modifier has to be held for those notes to be emitted at all, so there is no latch to hold.
+</div>
+
+<h3 id="devicefilter">Filtering MIDI devices</h3>
+<p><code>MidiEventManager</code> connects to <em>every</em> MIDI input port on the system and merges them into one event stream. That is usually what you want — but if a MIDI monitor, a loopback port (loopMIDI), or a network session is carrying a <em>copy</em> of your controller's traffic, every message arrives twice.</p>
+
+<p>Duplicate delivery is invisible to momentary handlers (on/on then off/off lands in the same place) but it silently breaks anything press-to-toggle: the latch flips on and straight back off within one frame, so the button looks dead while the raw MIDI looks perfect. <code>MidiEventManager</code> warns once per session when it sees the same note arrive from two ports in the same frame.</p>
+
+<pre><code>// Substring match against the port name, case-insensitive.
+MidiEventManager.Instance.SetDeviceFilter(
+    allowed: new[] { "Fighter", "MIDI Mix" },   // empty = accept every port
+    blocked: new[] { "loopMIDI" });             // applied after the allow list
+</code></pre>
+
+<p>Both lists are also fields on <code>MidiEventManager</code> and on <code>MidiSceneBootstrapper</code>, whose allow list defaults to the two controllers this package targets. Skipped ports are logged.</p>
+
 <h3 id="midimix-leds">MIDI Mix LED echo</h3>
 <p>The Mute (amber) and Rec-Arm (red) buttons on the MIDI Mix <strong>do not self-illuminate on press</strong>. The hardware only lights them when it receives a matching Note On back from the host. Add <code>MidiMixOutput</code> to your scene and it will auto-mirror presses.</p>
 
@@ -303,7 +334,49 @@ MidiMixOutput.Instance.SetRecArmLED(channel: 3, lit: true);
 MidiMixOutput.Instance.SetSoloLED(channel: 5, lit: true);   // Mute-while-SOLO-held
 MidiMixOutput.Instance.ClearAllLEDs();
 </code></pre>
-<p>To implement toggles, uncheck <em>Auto Mirror Buttons</em> on <code>MidiMixOutput</code>, subscribe to <code>MidiMixRouter.OnMute</code>, and call <code>SetMuteLED</code> with your own state tracking.</p>
+<p>For fully custom state, uncheck <em>Auto Mirror Buttons</em> on <code>MidiMixOutput</code>, subscribe to <code>MidiMixRouter.OnMute</code>, and call <code>SetMuteLED</code> yourself. You don't need to do this just to get toggle behavior — see <a href="#midimix-latch">latching</a> above.</p>
+
+<hr>
+
+<h2 id="drawer">Status drawer overlay</h2>
+
+<p><code>MidiStatusDrawer</code> (Test Scene sample) is a screen-space overlay that mirrors both controllers live: the 8&times;8 pad grid, all 24 knobs, 9 faders, the mute / rec-arm / solo / bank buttons, and a readout of the most recent MIDI event. It renders on every active display and is read-only — all widgets ignore picking, so clicks pass straight through to your scene.</p>
+
+<p>Add the component to any GameObject, or let <code>MidiSceneBootstrapper.EnsureCoreComponents()</code> spawn it.</p>
+
+<h3>Hotkeys</h3>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><code>`</code> (backtick)</td><td>Show / hide. <strong>Never disabled</strong> — a hidden drawer with no way back is a dead end.</td></tr>
+  <tr><td><code>F1</code></td><td>Show / hide (alias for backtick)</td></tr>
+  <tr><td><code>F2</code></td><td>Cycle placement: Right Centered &rlarr; Screen Centered</td></tr>
+  <tr><td><code>F3</code></td><td>Cycle theme: Dark &rlarr; Light</td></tr>
+</table>
+<p>The F-keys are gated by <strong>Enable Function Keys</strong> (on by default) for projects that bind them themselves. Every shortcut also has a scripting equivalent, so turning them off makes nothing unreachable.</p>
+
+<h3>Appearance</h3>
+<table>
+  <tr><th>Setting</th><th>Effect</th></tr>
+  <tr><td><strong>Theme</strong><br><code>Theme</code></td><td>Dark panels with light ink, or light panels with dark ink. The panels are semi-transparent and tint toward whatever is behind them, so pick the theme that <em>opposes</em> your scene background, not the one that matches it.</td></tr>
+  <tr><td><strong>Panel Opacity</strong><br><code>PanelOpacity</code></td><td>Alpha of the background panels, 0–1 (default 0.30). Widget ink is never faded, so the readout stays legible even at 0 — widgets floating on your scene with no panel.</td></tr>
+  <tr><td><strong>Stroke Weight</strong><br><code>StrokeWeight</code></td><td>Global line-weight multiplier for knob bodies and pad rings, 0.25–4 (default 1). Thickness only; widget sizes and proportions are untouched.</td></tr>
+  <tr><td><strong>Screen Fill</strong><br><code>ScreenFraction</code></td><td>Fraction of the display the drawer fills on whichever axis binds first — height on a landscape display, width on a portrait one. Never crops, at any aspect ratio.</td></tr>
+  <tr><td><strong>Placement</strong><br><code>Placement</code></td><td>Right Centered (pinned right, centered vertically) or Screen Centered.</td></tr>
+  <tr><td><strong>Drawer Font</strong><br><code>FontOverride</code></td><td>Optional typeface. Empty uses the bundled Cossette Titre.</td></tr>
+</table>
+
+<h3>Sections and behavior</h3>
+<table>
+  <tr><td><strong>Show Midi Fighter 64</strong> / <strong>Show MIDI Mix</strong></td><td>Run one controller without a dead panel taking up drawer space. Hiding the mix section reclaims its height — the pad grid grows to fill the same Screen Fill.</td></tr>
+  <tr><td><strong>Enable MF64 Fisheye</strong></td><td>The last-touched pad grows while its row and column neighbors deform to compensate.</td></tr>
+  <tr><td><strong>Fisheye Scale</strong><br><code>Mf64FisheyeScale</code></td><td>How far the focused pad grows, 1–6 (default 3). A flex-grow weight against the other seven rows/columns, so the grid stays square; 1 means no visible growth.</td></tr>
+</table>
+
+<p>Widgets render at 40% opacity until they receive their first MIDI event, then snap to full — which distinguishes "not yet touched" from "value is zero". Theme, opacity and stroke weight all restyle in place, so changing them never resets that state.</p>
+
+<div class="callout">
+  <strong>Multi-display:</strong> the drawer renders on every active display automatically. Call <code>Display.displays[i].Activate()</code> in your startup code <em>before</em> the drawer's <code>OnEnable</code> for secondary displays to appear.
+</div>
 
 <hr>
 
@@ -321,8 +394,11 @@ MidiMixOutput.Instance.ClearAllLEDs();
 <ul>
   <li>An 8&times;8 sphere grid mapped 1:1 to MF64 pads. Pressing a pad turns the matching sphere the router's <em>Button Down</em> color.</li>
   <li>A <strong>Play Wave</strong> UI button that animates a left-to-right sweep on-screen <em>and</em> on the physical LEDs.</li>
+  <li>The <a href="#drawer">status drawer</a> overlay — press <code>`</code> to show it.</li>
   <li>A raw MIDI event log overlay for debugging.</li>
 </ul>
+
+<p><code>MidiSceneBootstrapper</code> carries the whole configuration in one inspector: device filtering, the MF64 pad mode / color grid, LED colors, MIDI Mix latching, and every drawer setting above. It spawns any missing core components at <code>Awake</code>, so an empty scene with just this one component is a working setup.</p>
 
 <hr>
 
@@ -335,6 +411,10 @@ MidiMixOutput.Instance.ClearAllLEDs();
   <tr><td><code>static event Action&lt;int&gt; OnNoteOff</code></td><td>note</td></tr>
   <tr><td><code>static event Action&lt;int, float&gt; OnControlChange</code></td><td>cc, value 0–1</td></tr>
   <tr><td><code>string DeviceName</code></td><td>connected device name</td></tr>
+  <tr><td><code>string[] AllowedDeviceNames</code></td><td>connect only to ports matching these substrings; empty = all</td></tr>
+  <tr><td><code>string[] BlockedDeviceNames</code></td><td>never connect to ports matching these; applied after the allow list</td></tr>
+  <tr><td><code>SetDeviceFilter(allowed, blocked)</code></td><td>set both filters and re-run discovery</td></tr>
+  <tr><td><code>Reconnect()</code></td><td>drop all subscriptions and re-run discovery</td></tr>
 </table>
 
 <h3><code>MidiFighter64InputMap</code> (static)</h3>
@@ -396,9 +476,10 @@ MidiMixOutput.Instance.ClearAllLEDs();
   <tr><td><code>OnKnob(int ch, int row, float v)</code></td><td>ch 1–8, row 1–3, v 0–1</td></tr>
   <tr><td><code>OnChannelFader(int ch, float v)</code></td><td>ch 1–8</td></tr>
   <tr><td><code>OnMasterFader(float v)</code></td><td></td></tr>
-  <tr><td><code>OnMute(int ch, bool on)</code></td><td>Mute pressed while SOLO not held</td></tr>
-  <tr><td><code>OnSolo(int ch, bool on)</code></td><td>Mute pressed while SOLO IS held</td></tr>
-  <tr><td><code>OnRecArm(int ch, bool on)</code></td><td>ch 1–8</td></tr>
+  <tr><td><code>OnMute(int ch, bool on)</code></td><td>Mute, SOLO not held. Latched state by default — see <code>LatchMute</code></td></tr>
+  <tr><td><code>OnSolo(int ch, bool on)</code></td><td>Mute pressed while SOLO IS held. Always momentary</td></tr>
+  <tr><td><code>OnRecArm(int ch, bool on)</code></td><td>ch 1–8. Latched state by default</td></tr>
+  <tr><td><code>bool LatchMute / LatchRecArm</code></td><td>press-to-toggle, both <code>true</code> by default</td></tr>
   <tr><td><code>OnSoloModifier(bool isDown)</code></td><td>SOLO modifier button state</td></tr>
   <tr><td><code>static bool IsSoloHeld</code></td><td>true while SOLO is held</td></tr>
   <tr><td><code>OnBankLeft / OnBankRight</code></td><td>bank shift buttons (note 25 / 26)</td></tr>
@@ -414,6 +495,13 @@ MidiMixOutput.Instance.ClearAllLEDs();
   <li>Is <code>MidiEventManager</code> in the scene? Nothing works without it.</li>
   <li>The first event on any channel is sometimes swallowed by Minis — press a pad twice.</li>
   <li>Try disconnecting via a USB hub. Some hubs cause detection issues.</li>
+</ul>
+
+<h3>Mute / Rec-Arm toggles don't hold — the light flashes and goes out</h3>
+<ul>
+  <li>Almost always <strong>duplicate MIDI delivery</strong>. A second port is carrying a copy of your controller's traffic, so each press is handled twice: the latch flips on and straight back off in the same frame. Check the console for the "arrived from two MIDI ports in the same frame" warning, which names both ports.</li>
+  <li>Culprits are MIDI monitors, loopback ports (loopMIDI), and network MIDI sessions. Fix it with <a href="#devicefilter">device filtering</a> rather than by closing the tool.</li>
+  <li>Note that <em>momentary</em> mode looks perfectly fine under the same fault, so "the buttons work until I enable latching" points here, not at the latch code.</li>
 </ul>
 
 <h3>Wrong colors on LEDs</h3>

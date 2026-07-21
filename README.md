@@ -1,6 +1,12 @@
 # Midi Fighter 64 for Unity
 
-MIDI input bridge for the [DJ Tech Tools Midi Fighter 64](https://www.midifighter.com/) grid controller in Unity. Converts raw MIDI note events into logical 8x8 grid coordinates and routes them as typed C# events.
+MIDI input and LED output bridge for the [DJ Tech Tools Midi Fighter 64](https://www.midifighter.com/) grid controller and the [Akai MIDI Mix](https://www.akaipro.com/midimix) in Unity. Converts raw MIDI into logical grid coordinates and typed C# events.
+
+- **MF64 grid** — 8×8 pads as `(row, col)` events, per-pad Button/Toggle modes, LED output with a hardware-verified color palette.
+- **Akai MIDI Mix** — 24 knobs, 9 faders, and 24 buttons as typed events; Mute and Rec-Arm latch (press-to-toggle) by default and the host echoes their LEDs.
+- **Status drawer** — an optional screen-space overlay mirroring both controllers live, with dark/light themes and adjustable opacity, stroke weight and scale.
+
+Full documentation is in [`Documentation~/index.html`](Documentation~/index.html) — open it locally, or use **View documentation** in Package Manager.
 
 ## Requirements
 
@@ -125,6 +131,11 @@ if (MidiFighter64InputMap.IsInRange(noteNumber))
 | `static event Action<int, float> OnNoteOn` | Raw MIDI note on (noteNumber, velocity 0-1) |
 | `static event Action<int> OnNoteOff` | Raw MIDI note off (noteNumber) |
 | `string DeviceName` | Name of the connected MIDI device |
+| `string[] AllowedDeviceNames` | Connect only to ports matching these substrings; empty = every port |
+| `string[] BlockedDeviceNames` | Never connect to matching ports; applied after the allow list |
+| `SetDeviceFilter(allowed, blocked)` | Set both filters and re-run device discovery |
+
+> **Filter your ports if a MIDI monitor, loopback, or network session is running.** `MidiEventManager` merges every MIDI input port, so a port carrying a *copy* of your controller's traffic delivers each message twice — which cancels out any press-to-toggle logic. See Troubleshooting in the full docs.
 
 ### MidiGridRouter
 | Member | Description |

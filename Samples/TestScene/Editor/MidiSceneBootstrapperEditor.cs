@@ -12,6 +12,8 @@ namespace MidiFighter64.Samples.Editor
     [CustomEditor(typeof(MidiSceneBootstrapper))]
     public class MidiSceneBootstrapperEditor : UnityEditor.Editor
     {
+        SerializedProperty _allowedDeviceNames;
+        SerializedProperty _blockedDeviceNames;
         SerializedProperty _mf64ButtonConfig;
         SerializedProperty _inlineDefaultMode;
         SerializedProperty _inlinePadModes;
@@ -24,14 +26,21 @@ namespace MidiFighter64.Samples.Editor
         SerializedProperty _spawnStatusDrawer;
         SerializedProperty _drawerPlacement;
         SerializedProperty _drawerScreenFraction;
+        SerializedProperty _drawerTheme;
+        SerializedProperty _drawerPanelOpacity;
+        SerializedProperty _drawerStrokeWeight;
         SerializedProperty _showMf64;
         SerializedProperty _showMidiMix;
         SerializedProperty _enableMf64Fisheye;
+        SerializedProperty _mf64FisheyeScale;
+        SerializedProperty _enableDrawerFunctionKeys;
         SerializedProperty _drawerFont;
         SerializedProperty _logDrawerLayout;
 
         void OnEnable()
         {
+            _allowedDeviceNames = serializedObject.FindProperty("_allowedDeviceNames");
+            _blockedDeviceNames = serializedObject.FindProperty("_blockedDeviceNames");
             _mf64ButtonConfig  = serializedObject.FindProperty("_mf64ButtonConfig");
             _inlineDefaultMode = serializedObject.FindProperty("_inlineDefaultMode");
             _inlinePadModes    = serializedObject.FindProperty("_inlinePadModes");
@@ -44,9 +53,14 @@ namespace MidiFighter64.Samples.Editor
             _spawnStatusDrawer = serializedObject.FindProperty("_spawnStatusDrawer");
             _drawerPlacement   = serializedObject.FindProperty("_drawerPlacement");
             _drawerScreenFraction = serializedObject.FindProperty("_drawerScreenFraction");
+            _drawerTheme        = serializedObject.FindProperty("_drawerTheme");
+            _drawerPanelOpacity = serializedObject.FindProperty("_drawerPanelOpacity");
+            _drawerStrokeWeight = serializedObject.FindProperty("_drawerStrokeWeight");
             _showMf64          = serializedObject.FindProperty("_showMf64");
             _showMidiMix       = serializedObject.FindProperty("_showMidiMix");
             _enableMf64Fisheye = serializedObject.FindProperty("_enableMf64Fisheye");
+            _mf64FisheyeScale    = serializedObject.FindProperty("_mf64FisheyeScale");
+            _enableDrawerFunctionKeys = serializedObject.FindProperty("_enableDrawerFunctionKeys");
             _drawerFont        = serializedObject.FindProperty("_drawerFont");
             _logDrawerLayout   = serializedObject.FindProperty("_logDrawerLayout");
         }
@@ -58,6 +72,15 @@ namespace MidiFighter64.Samples.Editor
             // Section titles come from the [Header] attributes on the component's
             // fields — PropertyField draws them. Don't add matching LabelFields
             // here or every heading renders twice.
+            EditorGUILayout.PropertyField(_allowedDeviceNames, new GUIContent("Allowed Device Names"), true);
+            EditorGUILayout.PropertyField(_blockedDeviceNames, new GUIContent("Blocked Device Names"), true);
+            if (_allowedDeviceNames.arraySize == 0 && _blockedDeviceNames.arraySize == 0)
+                EditorGUILayout.HelpBox(
+                    "No filter — every MIDI input port is merged into one stream. If a monitor, loopback, or " +
+                    "network port carries a copy of a controller's traffic, each message is handled twice and " +
+                    "latching buttons will appear dead.",
+                    MessageType.Info);
+
             EditorGUILayout.PropertyField(_mf64ButtonConfig, new GUIContent("Pad Config Asset"));
 
             bool usingAsset = _mf64ButtonConfig.objectReferenceValue != null;
@@ -101,6 +124,13 @@ namespace MidiFighter64.Samples.Editor
                 EditorGUILayout.PropertyField(_drawerPlacement, new GUIContent("Placement"));
                 EditorGUILayout.PropertyField(_drawerScreenFraction, new GUIContent("Screen Fill"));
                 EditorGUILayout.LabelField(" ", "Fraction of the binding axis: height if landscape, width if portrait", EditorStyles.miniLabel);
+
+                EditorGUILayout.PropertyField(_drawerTheme, new GUIContent("Theme"));
+                EditorGUILayout.LabelField(" ", "Pick the theme that opposes the scene behind the drawer  ·  F3 cycles at runtime", EditorStyles.miniLabel);
+                EditorGUILayout.PropertyField(_drawerPanelOpacity, new GUIContent("Panel Opacity"));
+                EditorGUILayout.LabelField(" ", "Background panels only — widget ink is never faded", EditorStyles.miniLabel);
+                EditorGUILayout.PropertyField(_drawerStrokeWeight, new GUIContent("Stroke Weight"));
+                EditorGUILayout.LabelField(" ", "Line thickness of knob bodies and pad rings  ·  1 = design weight", EditorStyles.miniLabel);
                 EditorGUILayout.PropertyField(_showMf64,    new GUIContent("Show Midi Fighter 64"));
                 EditorGUILayout.PropertyField(_showMidiMix, new GUIContent("Show MIDI Mix"));
 
@@ -112,7 +142,17 @@ namespace MidiFighter64.Samples.Editor
 
                 // Nothing to magnify when the pad grid isn't drawn.
                 using (new EditorGUI.DisabledScope(!_showMf64.boolValue))
+                {
                     EditorGUILayout.PropertyField(_enableMf64Fisheye, new GUIContent("Enable MF64 Fisheye"));
+                    using (new EditorGUI.DisabledScope(!_enableMf64Fisheye.boolValue))
+                    {
+                        EditorGUILayout.PropertyField(_mf64FisheyeScale, new GUIContent("Fisheye Scale"));
+                        EditorGUILayout.LabelField(" ", "Growth weight of the focused row/column  ·  1 = no growth", EditorStyles.miniLabel);
+                    }
+                }
+
+                EditorGUILayout.PropertyField(_enableDrawerFunctionKeys, new GUIContent("Enable Function Keys"));
+                EditorGUILayout.LabelField(" ", "F1 show-hide  ·  F2 placement  ·  F3 theme  ·  backtick always works", EditorStyles.miniLabel);
 
                 EditorGUILayout.PropertyField(_drawerFont, new GUIContent("Drawer Font"));
                 if (_drawerFont.objectReferenceValue == null)

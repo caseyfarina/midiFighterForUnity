@@ -12,9 +12,9 @@ namespace MidiFighter64
     ///   OnKnob(channel, row, value)     — a knob was turned
     ///   OnChannelFader(channel, value)  — a channel fader moved
     ///   OnMasterFader(value)            — the master fader moved
-    ///   OnMute(channel, isNoteOn)       — a Mute button (Solo NOT held)
+    ///   OnMute(channel, isOn)           — a Mute button (Solo NOT held)
     ///   OnSolo(channel, isNoteOn)       — a Mute button while Solo IS held
-    ///   OnRecArm(channel, isNoteOn)     — a Rec Arm button
+    ///   OnRecArm(channel, isOn)         — a Rec Arm button
     ///   OnSoloModifier(isDown)          — the SOLO modifier button state
     ///   OnBankLeft / OnBankRight        — bank navigation buttons pressed
     ///   IsSoloHeld                       — static bool, reflects modifier state
@@ -23,15 +23,20 @@ namespace MidiFighter64
     /// for cases where you need the CC/note number or want to switch on type.
     ///
     /// All channel arguments are 1-based (1–8). Fader/knob values are 0–1.
+    ///
+    /// Mute and Rec-Arm latch (press-to-toggle) by default — see LatchMute /
+    /// LatchRecArm. OnSolo is always momentary, because the SOLO modifier has
+    /// to be held for those notes to be emitted at all.
+    ///
     /// Override RouteCC() or RouteNote() in a subclass for custom behaviour.
     /// </summary>
     public class MidiMixRouter : MonoBehaviour
     {
         [Header("Latching (press-to-toggle) buttons")]
-        [Tooltip("When true, Mute buttons latch on press. OnMute fires with the new latched state; note-off is ignored.")]
-        [SerializeField] bool _latchMute   = false;
-        [Tooltip("When true, Rec-Arm buttons latch on press. OnRecArm fires with the new latched state; note-off is ignored.")]
-        [SerializeField] bool _latchRecArm = false;
+        [Tooltip("When true (default), Mute buttons latch on press. OnMute fires with the new latched state; note-off is ignored. Untick for momentary behaviour.")]
+        [SerializeField] bool _latchMute   = true;
+        [Tooltip("When true (default), Rec-Arm buttons latch on press. OnRecArm fires with the new latched state; note-off is ignored. Untick for momentary behaviour.")]
+        [SerializeField] bool _latchRecArm = true;
 
         public bool LatchMute   { get => _latchMute;   set => _latchMute   = value; }
         public bool LatchRecArm { get => _latchRecArm; set => _latchRecArm = value; }
@@ -52,7 +57,12 @@ namespace MidiFighter64
         /// <summary>The master fader moved. Args: value (0–1).</summary>
         public static event Action<float> OnMasterFader;
 
-        /// <summary>A Mute button was pressed or released. Args: channel (1–8), isNoteOn.</summary>
+        /// <summary>
+        /// A Mute button changed state. Args: channel (1–8), isOn.
+        /// While <see cref="LatchMute"/> is on (the default) this fires once per
+        /// press with the new latched state; otherwise it fires on both note-on
+        /// and note-off with the raw button state.
+        /// </summary>
         public static event Action<int, bool> OnMute;
 
         /// <summary>
@@ -61,7 +71,12 @@ namespace MidiFighter64
         /// </summary>
         public static event Action<int, bool> OnSolo;
 
-        /// <summary>A Rec Arm button was pressed or released. Args: channel (1–8), isNoteOn.</summary>
+        /// <summary>
+        /// A Rec Arm button changed state. Args: channel (1–8), isOn.
+        /// While <see cref="LatchRecArm"/> is on (the default) this fires once per
+        /// press with the new latched state; otherwise it fires on both note-on
+        /// and note-off with the raw button state.
+        /// </summary>
         public static event Action<int, bool> OnRecArm;
 
         /// <summary>The SOLO modifier button was pressed or released. Args: isDown.</summary>

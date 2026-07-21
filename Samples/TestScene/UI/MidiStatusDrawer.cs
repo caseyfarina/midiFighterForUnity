@@ -15,6 +15,18 @@ namespace MidiFighter64.Samples
         ScreenCentered,
     }
 
+    /// <summary>Which way <see cref="MidiStatusDrawer"/> reads against the scene
+    /// behind it. The panels are semi-transparent, so they tint toward whatever
+    /// is rendered underneath — pick the theme that opposes your project's
+    /// background, not the one that matches it.</summary>
+    public enum DrawerTheme
+    {
+        /// <summary>Dark panels, light ink. For dark scenes. Default.</summary>
+        Dark,
+        /// <summary>Light panels, dark ink. For bright/white scenes.</summary>
+        Light,
+    }
+
     /// <summary>
     /// Screen-space overlay showing live state of both MIDI controllers
     /// (Midi Fighter 64 + Akai MIDI Mix). Toggled with backtick or F1.
@@ -35,6 +47,12 @@ namespace MidiFighter64.Samples
         [Tooltip("If enabled, the last-touched MF64 pad grows (fisheye focus) while its row/column neighbors deform to compensate.")]
         [SerializeField] bool _enableMf64Fisheye = true;
 
+        [Tooltip("How far the focused pad grows. It's a flex-grow weight against the " +
+                 "other 7 rows/columns, not a pixel size: 1 = no growth, 3 = the focused " +
+                 "row/column takes 3 shares to everyone else's 1.")]
+        [Range(1f, 6f)]
+        [SerializeField] float _mf64FisheyeScale = 3f;
+
         public bool EnableMf64Fisheye
         {
             get => _enableMf64Fisheye;
@@ -43,6 +61,23 @@ namespace MidiFighter64.Samples
                 if (_enableMf64Fisheye == value) return;
                 _enableMf64Fisheye = value;
                 if (!value) ClearMf64Focus();
+            }
+        }
+
+        /// <summary>Growth weight of the focused row/column, 1–6. 1 disables the
+        /// visible effect without turning the feature off.</summary>
+        public float Mf64FisheyeScale
+        {
+            get => _mf64FisheyeScale;
+            set
+            {
+                float v = Mathf.Clamp(value, 1f, 6f);
+                if (Mathf.Approximately(_mf64FisheyeScale, v)) return;
+                _mf64FisheyeScale = v;
+                // Re-apply to a pad that's focused right now, so dragging the
+                // slider in play mode shows the new scale immediately.
+                if (_focusRow >= 0 && _focusCol >= 0)
+                    FocusMf64Pad(_focusRow + 1, _focusCol + 1);
             }
         }
 
@@ -140,6 +175,21 @@ namespace MidiFighter64.Samples
             set => _logLayoutDiagnostics = value;
         }
 
+        [Tooltip("Listen for the F-key shortcuts: F1 show-hide, F2 placement, F3 theme. " +
+                 "On by default. Untick when the project binds those keys itself. " +
+                 "Backtick (`) always toggles the drawer regardless of this setting.")]
+        [SerializeField] bool _enableFunctionKeys = true;
+
+        /// <summary>Whether F1–F3 are live. Backtick is never gated — it's the
+        /// show/hide key, and a hidden drawer with no way back is a dead end.
+        /// Turning this off changes nothing about the drawer's state, only who
+        /// can change it; every shortcut has a scripting equivalent.</summary>
+        public bool EnableFunctionKeys
+        {
+            get => _enableFunctionKeys;
+            set => _enableFunctionKeys = value;
+        }
+
         [Tooltip("Where the drawer sits on the display. Vertically centered either way.")]
         [SerializeField] DrawerPlacement _placement = DrawerPlacement.RightCentered;
 
@@ -153,6 +203,12 @@ namespace MidiFighter64.Samples
         readonly bool[,] _knobsSeen  = new bool[8, 3];
         readonly bool[]  _fadersSeen = new bool[8];
         bool _masterFaderSeen;
+
+        /// <summary>Last LED color each MF64 pad was lit with, *before* the theme
+        /// adapted it. Kept so a theme change can re-adapt from the original —
+        /// re-adapting an already-adapted color would drift darker every switch.
+        /// Shared across displays, like the "seen" state.</summary>
+        readonly Color[] _padRawFill = new Color[64];
 
         MidiFighterButtonRouter _btnRouter;
         Font _uiFont;      // resolved cache — cleared when the override changes
@@ -199,14 +255,142 @@ namespace MidiFighter64.Samples
             }
         }
 
-        // ─── Colors / geometry ────────────────────────────────────────────
-        static readonly Color BgSection     = new Color(0.055f, 0.055f, 0.060f, 0.30f); // semi-transparent light dark tint
-        static readonly Color BarFillColor  = Color.white;                              // bright-white highlight
-        static readonly Color BarTrackColor = new Color(0.14f,  0.14f,  0.16f);
-        static readonly Color LabelColor    = new Color(0.75f,  0.75f,  0.78f);
-        static readonly Color MasterColor   = Color.white;                              // bright-white master fill
         const float UnseenOpacity = 0.4f;
         const float SeenOpacity   = 1.0f;
+
+        // ─── Theme ────────────────────────────────────────────────────────
+
+        [Tooltip("Dark panels with light ink, or light panels with dark ink. " +
+                 "Pick the one that opposes the scene behind the drawer.")]
+        [SerializeField] DrawerTheme _theme = DrawerTheme.Dark;
+
+        [Tooltip("Alpha of the drawer's background panels. 0 = widgets float on the " +
+                 "scene with no panel at all; 1 = fully opaque. The widgets themselves " +
+                 "are never faded by this.")]
+        [Range(0f, 1f)]
+        [SerializeField] float _panelOpacity = 0.30f;
+
+        [Tooltip("Multiplier on the line weight of every stroked widget — knob bodies " +
+                 "and pad rings. 1 = the design weight. Only thickness changes; the " +
+                 "widgets stay the same size and proportions.")]
+        [Range(0.25f, 4f)]
+        [SerializeField] float _strokeWeight = 1f;
+
+        /// <summary>Dark or light. Restyles in place — no rebuild, so "seen" state survives.</summary>
+        public DrawerTheme Theme
+        {
+            get => _theme;
+            set { if (_theme == value) return; _theme = value; ApplyTheme(); }
+        }
+
+        /// <summary>Alpha of the background panels, 0–1. Widget ink is unaffected.</summary>
+        public float PanelOpacity
+        {
+            get => _panelOpacity;
+            set
+            {
+                float v = Mathf.Clamp01(value);
+                if (Mathf.Approximately(_panelOpacity, v)) return;
+                _panelOpacity = v;
+                ApplyTheme();
+            }
+        }
+
+        /// <summary>Global line-weight multiplier for every stroked widget, 0.25–4.
+        /// Sizes and proportions are untouched — only thickness.</summary>
+        public float StrokeWeight
+        {
+            get => _strokeWeight;
+            set
+            {
+                float v = Mathf.Clamp(value, 0.25f, 4f);
+                if (Mathf.Approximately(_strokeWeight, v)) return;
+                _strokeWeight = v;
+                ApplyTheme();
+            }
+        }
+
+        /// <summary>
+        /// Every color the drawer paints, resolved from <see cref="DrawerTheme"/>.
+        /// Built fresh on each theme/opacity change rather than cached, so there is
+        /// no second copy to fall out of sync.
+        /// </summary>
+        readonly struct Palette
+        {
+            public readonly Color SectionBg;    // panel background (carries PanelOpacity)
+            public readonly Color Ink;          // fader fills, master, lit knob ticks, mix pads
+            public readonly Color Track;        // fader/master troughs
+            public readonly Color TickOff;      // knob ticks above the current value
+            public readonly Color PadStroke;    // pad outline ring
+            public readonly Color Label;        // captions
+            public readonly Color MessageBg;
+            public readonly Color MessageText;
+            public readonly bool  IsLight;
+
+            Palette(Color sectionBg, Color ink, Color track, Color tickOff, Color padStroke,
+                    Color label, Color messageBg, Color messageText, bool isLight)
+            {
+                SectionBg = sectionBg; Ink = ink; Track = track; TickOff = tickOff;
+                PadStroke = padStroke; Label = label; MessageBg = messageBg;
+                MessageText = messageText; IsLight = isLight;
+            }
+
+            public static Palette For(DrawerTheme theme, float panelOpacity)
+            {
+                float a = Mathf.Clamp01(panelOpacity);
+                // Light values are strictly neutral (r == g == b). A color bias
+                // here reads as a tint once the semi-transparent panel blends
+                // with the scene behind it — a blue-biased "near black" came out
+                // brown over a warm background.
+                return theme == DrawerTheme.Light
+                    ? new Palette(
+                        sectionBg:   new Color(0.94f, 0.94f, 0.94f, a),
+                        ink:         new Color(0.05f, 0.05f, 0.05f),
+                        track:       new Color(0.72f, 0.72f, 0.72f),
+                        tickOff:     new Color(0.76f, 0.76f, 0.76f),
+                        padStroke:   new Color(0.34f, 0.34f, 0.34f),
+                        label:       new Color(0.16f, 0.16f, 0.16f),
+                        messageBg:   new Color(1f, 1f, 1f, a),
+                        messageText: new Color(0.09f, 0.09f, 0.09f),
+                        isLight:     true)
+                    : new Palette(
+                        sectionBg:   new Color(0.055f, 0.055f, 0.060f, a),
+                        ink:         Color.white,
+                        track:       new Color(0.14f, 0.14f, 0.16f),
+                        tickOff:     new Color(0.22f, 0.22f, 0.24f),
+                        padStroke:   new Color(0.55f, 0.55f, 0.60f),
+                        label:       new Color(0.75f, 0.75f, 0.78f),
+                        messageBg:   new Color(0f, 0f, 0f, a),
+                        messageText: new Color(0.85f, 0.85f, 0.90f),
+                        isLight:     false);
+            }
+
+            /// <summary>
+            /// Adapts a hardware LED color for this theme. The MF64 pads mirror real
+            /// LED colors, so they are deliberately *not* themed — except that the
+            /// greyscale end of the palette (White, Grey, DarkGrey) is invisible on a
+            /// light panel. Only near-white fills are darkened, and only in Light
+            /// theme; the saturated colors read fine either way and pass through
+            /// untouched. Without this, Light theme silently loses half the palette.
+            /// </summary>
+            public Color AdaptLed(Color c)
+            {
+                if (!IsLight) return c;
+                float luminance = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+                if (luminance < 0.62f) return c;
+                // Keep the hue, drop the value to sit alongside the theme's ink.
+                float t = Mathf.InverseLerp(0.62f, 1f, luminance);
+                return Color.Lerp(c, new Color(c.r * 0.22f, c.g * 0.22f, c.b * 0.22f, c.a), t);
+            }
+        }
+
+        Palette Colors => Palette.For(_theme, _panelOpacity);
+
+        // USS classes, so a theme change can find the elements the DrawerView
+        // struct doesn't retain (section panels, captions) without a rebuild.
+        const string SectionClass = "midi-drawer-section";
+        const string LabelClass   = "midi-drawer-label";
+        const string MessageClass = "midi-drawer-message";
 
         // The drawer needs a *definite* width. It's absolutely positioned with
         // only right/top/bottom set, so without this it is shrink-to-fit — and
@@ -291,21 +475,35 @@ namespace MidiFighter64.Samples
         // Active pad grows in both axes so it stays proportional (square);
         // its row (height) and its column (width across all rows) scale by
         // the same factor, so neighbors in the row/column deform.
-        const float FocusScale  = 3f;
         const int   FocusHoldMs = 800;   // toggle mode: keep focused this long
         int _focusRow = -1, _focusCol = -1;
         IVisualElementScheduledItem _focusClearTimer;
-
         // ─── Unity lifecycle ──────────────────────────────────────────────
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
+            // Color's default is transparent black, which would blank a pad the
+            // moment the theme changed before it was ever lit.
+            for (int i = 0; i < _padRawFill.Length; i++) _padRawFill[i] = Color.white;
         }
 
         void OnDestroy()
         {
             if (Instance == this) Instance = null;
+        }
+
+        // Restyle-only settings, so they can be dialed in live from this
+        // component's Inspector during play mode. Deliberately does NOT touch
+        // anything that rebuilds: a rebuild destroys and creates GameObjects,
+        // which is illegal from OnValidate — the same reason MidiSceneBootstrapper
+        // doesn't push drawer config from its own OnValidate. With no views built
+        // yet (edit mode, or before OnEnable) both calls are no-ops.
+        void OnValidate()
+        {
+            if (!isActiveAndEnabled) return;
+            ApplyTheme();
+            ApplyPlacement();
         }
 
         void OnEnable()
@@ -352,15 +550,26 @@ namespace MidiFighter64.Samples
         {
             var kb = Keyboard.current;
             if (kb == null) return;
-            if (kb.backquoteKey.wasPressedThisFrame || kb.f1Key.wasPressedThisFrame)
+
+            // Backtick is never gated. It's the show/hide key, and a hidden
+            // drawer with no way back is a dead end; the function keys are the
+            // ones projects actually collide with, so only they answer to
+            // EnableFunctionKeys. F1 is an alias for backtick, so it's gated.
+            if (kb.backquoteKey.wasPressedThisFrame ||
+                (_enableFunctionKeys && kb.f1Key.wasPressedThisFrame))
             {
                 _hidden = !_hidden;
                 ApplyHiddenState(instant: false);
             }
+
+            if (!_enableFunctionKeys) return;
+
             if (kb.f2Key.wasPressedThisFrame)
                 Placement = _placement == DrawerPlacement.RightCentered
                     ? DrawerPlacement.ScreenCentered
                     : DrawerPlacement.RightCentered;
+            if (kb.f3Key.wasPressedThisFrame)
+                Theme = _theme == DrawerTheme.Dark ? DrawerTheme.Light : DrawerTheme.Dark;
         }
 
         // The drawer is vertically centered in both modes; only the horizontal
@@ -373,6 +582,61 @@ namespace MidiFighter64.Samples
                 v.root.style.justifyContent = _placement == DrawerPlacement.ScreenCentered
                     ? Justify.Center
                     : Justify.FlexEnd;
+            }
+        }
+
+        /// <summary>
+        /// Repaints every themed element in place — palette and stroke weight,
+        /// the two settings that change how widgets look without resizing them
+        /// or touching the tree. Like <see cref="ApplyPlacement"/>
+        /// this deliberately avoids a rebuild: rebuilding resets each widget's
+        /// "seen" opacity, so flipping the theme would wrongly re-dim every control
+        /// the user had already touched. Section panels and captions aren't held in
+        /// DrawerView, hence the class-name queries.
+        /// </summary>
+        void ApplyTheme()
+        {
+            var p = Colors;
+            foreach (var v in _views)
+            {
+                if (v.root == null) continue;
+
+                v.root.Query<VisualElement>(className: SectionClass)
+                      .ForEach(s => s.style.backgroundColor = p.SectionBg);
+                v.root.Query<Label>(className: LabelClass)
+                      .ForEach(l => l.style.color = p.Label);
+                v.root.Query<Label>(className: MessageClass).ForEach(l =>
+                {
+                    l.style.backgroundColor = p.MessageBg;
+                    l.style.color           = p.MessageText;
+                });
+                v.root.Query<KnobDisplay>().ForEach(k =>
+                {
+                    k.SetInk(p.Ink, p.TickOff, p.PadStroke);
+                    k.StrokeScale = _strokeWeight;
+                });
+                v.root.Query<PadCell>().ForEach(c =>
+                {
+                    c.StrokeColor = p.PadStroke;
+                    c.StrokeScale = _strokeWeight;
+                });
+
+                foreach (var bar in v.faderBars)     if (bar   != null) bar.style.backgroundColor   = p.Ink;
+                foreach (var track in v.faderTracks) if (track != null) track.style.backgroundColor = p.Track;
+                if (v.masterFaderBar   != null) v.masterFaderBar.style.backgroundColor   = p.Ink;
+                if (v.masterFaderTrack != null) v.masterFaderTrack.style.backgroundColor = p.Track;
+
+                // Mixer pads are drawer chrome — they take the theme's ink.
+                foreach (var pad in v.mutes)   if (pad != null) pad.FillColor = p.Ink;
+                foreach (var pad in v.recArms) if (pad != null) pad.FillColor = p.Ink;
+                if (v.soloModifier != null) v.soloModifier.FillColor = p.Ink;
+                if (v.bankLeft     != null) v.bankLeft.FillColor     = p.Ink;
+                if (v.bankRight    != null) v.bankRight.FillColor    = p.Ink;
+
+                // MF64 pads mirror hardware LED colors, so they re-adapt from the
+                // raw color rather than taking the ink — see Palette.AdaptLed.
+                for (int i = 0; i < v.pads.Length; i++)
+                    if (v.pads[i] != null) v.pads[i].FillColor = p.AdaptLed(_padRawFill[i]);
             }
         }
 
@@ -391,7 +655,9 @@ namespace MidiFighter64.Samples
             }
             ApplyHiddenState(instant: true);
             ApplyPlacement();
-
+            // One pass over the finished tree, so anything the build sites didn't
+            // theme explicitly (KnobDisplay ink, for one) still lands correctly.
+            ApplyTheme();
         }
 
         /// <summary>Dumps resolved geometry so layout can be verified from the
@@ -662,12 +928,12 @@ namespace MidiFighter64.Samples
                     strip.Add(knob);
                 }
 
-                var mute = MakeSizedPad(PadCell.Mode.Toggle, BarFillColor, PAD_SIZE);
+                var mute = MakeSizedPad(PadCell.Mode.Toggle, Colors.Ink, PAD_SIZE);
                 mute.style.marginBottom = 4;
                 view.mutes[ch] = mute;
                 strip.Add(mute);
 
-                var rec = MakeSizedPad(PadCell.Mode.Toggle, BarFillColor, PAD_SIZE);
+                var rec = MakeSizedPad(PadCell.Mode.Toggle, Colors.Ink, PAD_SIZE);
                 rec.style.marginBottom = 6;
                 view.recArms[ch] = rec;
                 strip.Add(rec);
@@ -696,7 +962,7 @@ namespace MidiFighter64.Samples
 
             var masterTrack = new VisualElement();
             masterTrack.style.height = 10;
-            masterTrack.style.backgroundColor = BarTrackColor;
+            masterTrack.style.backgroundColor = Colors.Track;
             masterTrack.style.borderTopLeftRadius = 3;
             masterTrack.style.borderTopRightRadius = 3;
             masterTrack.style.borderBottomLeftRadius = 3;
@@ -707,7 +973,7 @@ namespace MidiFighter64.Samples
             view.masterFaderBar = new VisualElement();
             view.masterFaderBar.style.height = new Length(100, LengthUnit.Percent);
             view.masterFaderBar.style.width = 0;
-            view.masterFaderBar.style.backgroundColor = MasterColor;
+            view.masterFaderBar.style.backgroundColor = Colors.Ink;
             view.masterFaderBar.style.borderTopLeftRadius = 3;
             view.masterFaderBar.style.borderTopRightRadius = 3;
             view.masterFaderBar.style.borderBottomLeftRadius = 3;
@@ -724,9 +990,9 @@ namespace MidiFighter64.Samples
             utilRow.style.alignItems = Align.Center;
             utilRow.style.alignSelf = Align.Stretch;
             utilRow.style.marginTop = 8;
-            view.soloModifier = MakeSizedPad(PadCell.Mode.Button, MasterColor, PAD_SIZE);
-            view.bankLeft     = MakeSizedPad(PadCell.Mode.Button, BarFillColor, PAD_SIZE);
-            view.bankRight    = MakeSizedPad(PadCell.Mode.Button, BarFillColor, PAD_SIZE);
+            view.soloModifier = MakeSizedPad(PadCell.Mode.Button, Colors.Ink, PAD_SIZE);
+            view.bankLeft     = MakeSizedPad(PadCell.Mode.Button, Colors.Ink, PAD_SIZE);
+            view.bankRight    = MakeSizedPad(PadCell.Mode.Button, Colors.Ink, PAD_SIZE);
             utilRow.Add(WithCaption(view.soloModifier, "SOLO"));
 
             // Message display — fills space between SOLO and Bank L/R
@@ -750,7 +1016,7 @@ namespace MidiFighter64.Samples
 
         PadCell MakeSizedPad(PadCell.Mode mode, Color fill, float size)
         {
-            var cell = new PadCell { CellMode = mode, FillColor = fill };
+            var cell = new PadCell { CellMode = mode, FillColor = fill, StrokeColor = Colors.PadStroke };
             cell.style.width = size;
             cell.style.height = size;
             return cell;
@@ -759,7 +1025,7 @@ namespace MidiFighter64.Samples
         VisualElement MakeFader(out VisualElement bar, bool seen)
         {
             var col = new VisualElement();
-            col.style.backgroundColor = BarTrackColor;
+            col.style.backgroundColor = Colors.Track;
             col.style.borderTopLeftRadius = 3;
             col.style.borderTopRightRadius = 3;
             col.style.borderBottomLeftRadius = 3;
@@ -769,7 +1035,7 @@ namespace MidiFighter64.Samples
 
             bar = new VisualElement();
             bar.style.height = 0;
-            bar.style.backgroundColor = BarFillColor;
+            bar.style.backgroundColor = Colors.Ink;
             bar.style.borderTopLeftRadius = 3;
             bar.style.borderTopRightRadius = 3;
             bar.style.borderBottomLeftRadius = 3;
@@ -794,7 +1060,8 @@ namespace MidiFighter64.Samples
         {
             // Title is unused — kept for API compatibility with the existing callers.
             var s = new VisualElement();
-            s.style.backgroundColor = BgSection;
+            s.AddToClassList(SectionClass);
+            s.style.backgroundColor = Colors.SectionBg;
             s.style.paddingTop = SectionPad;
             s.style.paddingBottom = SectionPad;
             s.style.paddingLeft = SectionPad;
@@ -811,25 +1078,30 @@ namespace MidiFighter64.Samples
         Label MakeMessageLabel()
         {
             var msg = MakeLabel("—", MessageFontSize);
+            // The strip has its own ink and background, so take it out of the
+            // caption class or a theme change would restyle it twice.
+            msg.RemoveFromClassList(LabelClass);
+            msg.AddToClassList(MessageClass);
             msg.style.flexGrow = 1;
             msg.style.paddingLeft = 8;
             msg.style.paddingRight = 8;
             msg.style.paddingTop = 4;
             msg.style.paddingBottom = 4;
-            msg.style.backgroundColor = new Color(0f, 0f, 0f, 0.35f);
+            msg.style.backgroundColor = Colors.MessageBg;
             msg.style.borderTopLeftRadius = 3;
             msg.style.borderTopRightRadius = 3;
             msg.style.borderBottomLeftRadius = 3;
             msg.style.borderBottomRightRadius = 3;
             msg.style.unityTextAlign = TextAnchor.MiddleLeft;
-            msg.style.color = new Color(0.85f, 0.85f, 0.90f);
+            msg.style.color = Colors.MessageText;
             return msg;
         }
 
         Label MakeLabel(string text, int size)
         {
             var l = new Label(text);
-            l.style.color = LabelColor;
+            l.AddToClassList(LabelClass);
+            l.style.color = Colors.Label;
             l.style.fontSize = size;
             l.style.unityFont = new StyleFont(UiFont);
             l.pickingMode = PickingMode.Ignore;
@@ -912,12 +1184,14 @@ namespace MidiFighter64.Samples
         void HandleToggle(GridButton btn, bool state)
         {
             var color = ResolvePadColor(btn, fallbackGlobal: _btnRouter != null ? _btnRouter.ToggleOnColor : MidiFighterLEDColor.White);
+            _padRawFill[btn.linearIndex] = color;
+            var shown = Colors.AdaptLed(color);
             foreach (var v in _views)
             {
                 var cell = v.pads[btn.linearIndex];
                 if (cell == null) continue;
                 cell.CellMode = PadCell.Mode.Toggle;
-                cell.FillColor = color;
+                cell.FillColor = shown;
                 cell.Active = state;
             }
             if (_enableMf64Fisheye)
@@ -931,12 +1205,14 @@ namespace MidiFighter64.Samples
         void HandleButtonPress(GridButton btn, float velocity)
         {
             var color = ResolvePadColor(btn, fallbackGlobal: _btnRouter != null ? _btnRouter.ButtonDownColor : MidiFighterLEDColor.BrightPink);
+            _padRawFill[btn.linearIndex] = color;
+            var shown = Colors.AdaptLed(color);
             foreach (var v in _views)
             {
                 var cell = v.pads[btn.linearIndex];
                 if (cell == null) continue;
                 cell.CellMode = PadCell.Mode.Button;
-                cell.FillColor = color;
+                cell.FillColor = shown;
                 cell.Active = true;
             }
             if (_enableMf64Fisheye)
@@ -949,7 +1225,7 @@ namespace MidiFighter64.Samples
 
         // ─── Fisheye focus impl ──────────────────────────────────────────
         // Grow the active pad's row (height) and its column (across all rows,
-        // width) by FocusScale so the pad itself stays proportional. Timing
+        // width) by Mf64FisheyeScale so the pad stays proportional. Timing
         // is asymmetric: snap in ~100ms, ease out over ~700ms.
         static readonly List<TimeValue> FocusInDuration  = new() { new TimeValue(100, TimeUnit.Millisecond) };
         static readonly List<TimeValue> FocusOutDuration = new() { new TimeValue(700, TimeUnit.Millisecond) };
@@ -972,7 +1248,7 @@ namespace MidiFighter64.Samples
                     {
                         rowEl.style.transitionDuration = FocusInDuration;
                         rowEl.style.transitionTimingFunction = FocusInEase;
-                        rowEl.style.flexGrow = (r == activeRow) ? FocusScale : 1f;
+                        rowEl.style.flexGrow = (r == activeRow) ? _mf64FisheyeScale : 1f;
                     }
                     for (int c = 0; c < 8; c++)
                     {
@@ -980,7 +1256,7 @@ namespace MidiFighter64.Samples
                         if (cell == null) continue;
                         cell.style.transitionDuration = FocusInDuration;
                         cell.style.transitionTimingFunction = FocusInEase;
-                        cell.style.flexGrow = (c == activeCol) ? FocusScale : 1f;
+                        cell.style.flexGrow = (c == activeCol) ? _mf64FisheyeScale : 1f;
                     }
                 }
             }
@@ -1098,22 +1374,25 @@ namespace MidiFighter64.Samples
             SetMessage($"Mix Master  {value:0.00}");
         }
 
-        void HandleMixMute(int channel, bool isNoteOn)
+        // isOn is the router's latched state when LatchMute / LatchRecArm are on
+        // (the default) and the raw button state when they aren't. ON / OFF reads
+        // correctly either way, where DOWN / UP only described the momentary case.
+        void HandleMixMute(int channel, bool isOn)
         {
             int ch = channel - 1;
             if (ch < 0 || ch > 7) return;
             foreach (var v in _views)
-                if (v.mutes[ch] != null) v.mutes[ch].Active = isNoteOn;
-            SetMessage($"Mix Mute Ch{channel}  {(isNoteOn ? "DOWN" : "UP")}");
+                if (v.mutes[ch] != null) v.mutes[ch].Active = isOn;
+            SetMessage($"Mix Mute Ch{channel}  {(isOn ? "ON" : "OFF")}");
         }
 
-        void HandleMixRecArm(int channel, bool isNoteOn)
+        void HandleMixRecArm(int channel, bool isOn)
         {
             int ch = channel - 1;
             if (ch < 0 || ch > 7) return;
             foreach (var v in _views)
-                if (v.recArms[ch] != null) v.recArms[ch].Active = isNoteOn;
-            SetMessage($"Mix RecArm Ch{channel}  {(isNoteOn ? "DOWN" : "UP")}");
+                if (v.recArms[ch] != null) v.recArms[ch].Active = isOn;
+            SetMessage($"Mix RecArm Ch{channel}  {(isOn ? "ON" : "OFF")}");
         }
 
         void HandleMixSoloModifier(bool isDown)

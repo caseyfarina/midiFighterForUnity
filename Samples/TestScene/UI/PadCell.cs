@@ -13,11 +13,10 @@ namespace MidiFighter64.Samples
     {
         public enum Mode { Toggle, Button }
 
-        static readonly Color StrokeColor = new Color(0.55f, 0.55f, 0.60f);
-
         Mode _mode = Mode.Toggle;
         bool _active;
-        Color _fillColor = Color.white;
+        Color _fillColor   = Color.white;
+        Color _strokeColor = new Color(0.55f, 0.55f, 0.60f);
 
         public Mode CellMode
         {
@@ -37,6 +36,30 @@ namespace MidiFighter64.Samples
             set { if (_fillColor != value) { _fillColor = value; MarkDirtyRepaint(); } }
         }
 
+        /// <summary>Outline color. Set from the drawer's theme palette — the ring
+        /// has to read against whatever the panel is tinted toward.</summary>
+        public Color StrokeColor
+        {
+            get => _strokeColor;
+            set { if (_strokeColor != value) { _strokeColor = value; MarkDirtyRepaint(); } }
+        }
+
+        float _strokeScale = 1f;
+
+        /// <summary>Multiplier on <see cref="KnobDisplay.StrokeWidth"/>, from the
+        /// drawer's global stroke weight. The ring's radius already insets by the
+        /// stroke, so a heavier line thickens inward and the cell box is unchanged.</summary>
+        public float StrokeScale
+        {
+            get => _strokeScale;
+            set
+            {
+                if (Mathf.Approximately(_strokeScale, value)) return;
+                _strokeScale = value;
+                MarkDirtyRepaint();
+            }
+        }
+
         public PadCell()
         {
             pickingMode = PickingMode.Ignore;
@@ -52,14 +75,14 @@ namespace MidiFighter64.Samples
             if (rect.width <= 0 || rect.height <= 0) return;
 
             var p = ctx.painter2D;
-            float stroke = KnobDisplay.StrokeWidth;
+            float stroke = KnobDisplay.StrokeWidth * _strokeScale;
             var center = new Vector2(rect.center.x, rect.center.y);
             float rx = rect.width  * 0.5f - stroke;
             float ry = rect.height * 0.5f - stroke;
             if (rx <= 0 || ry <= 0) return;
 
             // Outer stroked ellipse — stretches with the cell.
-            p.strokeColor = StrokeColor;
+            p.strokeColor = _strokeColor;
             p.lineWidth = stroke;
             p.BeginPath();
             AddEllipsePath(p, center, rx, ry);

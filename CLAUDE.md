@@ -149,7 +149,13 @@ MidiMixRouter.OnKnob += (channel, row, value) => {
 
 ### Latch Mute / Rec-Arm buttons (press-to-toggle)
 
-MIDI Mix Mute and Rec-Arm buttons are momentary hardware buttons by default. Turn them into press-to-toggle latching buttons via `MidiMixRouter.LatchMute` / `LatchRecArm` (or the "MIDI Mix — Latching Buttons" section on `MidiSceneBootstrapper`). When latching is on, `OnMute` / `OnRecArm` fire only on note-on and pass the *new latched state* (not raw isNoteOn). `MidiMixOutput` subscribes to those router events, so hardware LEDs stay lit while latched. `OnSolo` (Mute-while-SOLO) is always momentary.
+MIDI Mix Mute and Rec-Arm buttons are momentary in *hardware*, but the router latches them by default: `MidiMixRouter.LatchMute` and `LatchRecArm` are both **true**. Press once to turn on, press again to turn off. `OnMute` / `OnRecArm` then fire only on note-on and pass the *new latched state* (not raw isNoteOn). `MidiMixOutput` subscribes to those router events, so the hardware LED stays lit for as long as the button is latched on, and `MidiStatusDrawer` holds the corresponding pad filled.
+
+Untick the flags (or the "MIDI Mix — Latching Buttons" section on `MidiSceneBootstrapper`) for the old momentary behaviour, where the events fire on both note-on and note-off with the raw button state.
+
+`OnSolo` (Mute-while-SOLO) is always momentary — the SOLO modifier has to be held for those notes to be emitted at all, so there is no latch to hold.
+
+`MidiSceneBootstrapper` carries a `_serializedVersion` stamp and a `MigrateSerializedDefaults()` method for this: a bool default that flips can't be repaired by sniffing the value the way `_drawerScreenFraction` is, because a serialized `false` from an older scene is indistinguishable from one the user deliberately unticked. If you flip another bool default, bump `CurrentSerializedVersion` and add a block — don't add a value guard to `NormalizeInlineArrays`.
 
 ### Detect SOLO-held mute presses
 
@@ -170,6 +176,9 @@ if (MidiMixRouter.IsSoloHeld) { ... }
 **Hotkeys**
 - **Backtick** (`` ` ``) or **F1** — show/hide the drawer.
 - **F2** — cycle `DrawerPlacement` (Right Centered ⇄ Screen Centered).
+- **F3** — cycle `DrawerTheme` (Dark ⇄ Light).
+
+The **F-keys only** are gated by `EnableFunctionKeys` (**Enable Function Keys** on the bootstrapper), on by default. Untick it when the project binds F1–F3 itself. **Backtick is never gated** — it's the show/hide key, and a hidden drawer with no way back is a dead end. F1 is an alias for backtick, so it *is* gated. Every shortcut also has a scripting equivalent.
 
 **Bootstrapper controls** (Status Drawer section)
 - **Spawn Status Drawer** — untick to keep `EnsureCoreComponents()` from creating the overlay at all.
@@ -177,7 +186,11 @@ if (MidiMixRouter.IsSoloHeld) { ... }
 - **Show Midi Fighter 64** / **Show MIDI Mix** — both on by default. Untick one to run a single controller without a dead panel taking up drawer space. Runtime equivalents: `ShowMf64` / `ShowMidiMix`, or `SetVisibleSections(mf64, mix)` to change both with one rebuild.
 - **Drawer Font** — optional typeface override. Empty = the bundled `CossetteTitre-Regular.ttf` in `Samples~/TestScene/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font (Arial/Helvetica) if that Resources folder is missing.
 - **Enable MF64 Fisheye** — the last-touched pad grows while its row/column neighbors deform to compensate. On by default. Also settable at runtime via `MidiStatusDrawer.Instance.EnableMf64Fisheye`; assigning `false` clears any active focus.
+- **Fisheye Scale** — how far the focused pad grows, 1–6 (default 3). Runtime equivalent: `Mf64FisheyeScale`. It's a **flex-grow weight**, not a pixel size or a multiplier: the focused row/column takes N shares against the other seven rows/columns' 1, so the grid stays exactly square and the growth is always paid for by the neighbors. `1` means no visible growth without disabling the feature. Setting it re-applies to a currently focused pad, so the slider is live in play mode.
 
+- **Theme** — `Dark` (default) or `Light`. Runtime equivalent: `MidiStatusDrawer.Instance.Theme`, or F3. The panels are semi-transparent and tint toward whatever is behind them, so pick the theme that *opposes* the scene background, not the one that matches it. Restyles in place; never rebuilds, so widgets keep their "seen" state.
+- **Stroke Weight** — global line-weight multiplier for stroked widgets (knob bodies, pad rings), 0.25–4 (default 1). Runtime equivalent: `StrokeWeight`. It multiplies the single `KnobDisplay.StrokeWidth` base that both custom elements share, through their `StrokeScale` property. Radii are all fractions of each element's own size, so thickness is the *only* thing that changes — widget sizes, the pad grid's square, and `MixSectionHeight` are all untouched. Any new stroked drawing must go through `StrokeWidth * StrokeScale` or it won't follow the slider.
+- **Panel Opacity** — alpha of the section panels and message strip, 0–1 (default 0.30). Runtime equivalent: `PanelOpacity`. Widget ink is never faded by this, so the readout stays legible even at 0 (widgets floating on the scene with no panel).
 - **Screen Fill** — fraction of the display the drawer occupies on whichever axis binds first: height on a landscape display, width on a portrait one. Never crops. Runtime equivalent: `ScreenFraction`.
 - **Log Layout Report** — diagnostic, off by default. Dumps one resolved-geometry report to the console ~400 ms after the drawer is first *shown* (press `` ` ``; a hidden drawer is `display:none` and measures `NaN`). Reports screen size, derived reference resolution, drawer/grid/cell sizes, screen coverage, mixer-vs-grid column widths, and the measured mix section height. Use it instead of eyeballing: the grid and cell lines must be square, one coverage axis must equal Screen Fill, and `mix section h` is how you correct `MixChromeHeight`. Reads `resolvedStyle` only, never writes — that distinction is what keeps it from feeding back into layout.
 
@@ -198,6 +211,8 @@ Section visibility is baked into the UI tree, so toggling it rebuilds all views.
 - Positioned by flow layout (root flex row, `alignItems:Center`), not absolute offsets, so vertical centering holds at any aspect. `RightCentered` = `justifyContent:FlexEnd`, `ScreenCentered` = `justifyContent:Center`.
 - **Hiding sets `display: none`** after the 200 ms slide — that, not the slide, is what guarantees the drawer is gone. The slide is `translate: 120%` of the drawer's *own width*, which clears the viewport only when it's flush right; under `ScreenCentered` it stops mid-screen and stays visible. Don't "fix" that with a larger percentage — no fixed value is correct for every placement and display size. Showing re-enters layout still offset and slides home on the next frame, because a transition cannot animate from a `display:none` element.
 - Transparent background — only the section panels render.
+- **Every color goes through `Palette.For(theme, opacity)`.** Don't add a literal `Color` at a build site — a theme switch calls `ApplyTheme`, which repaints in place and would skip it. Elements the `DrawerView` class doesn't retain (section panels, captions) are found by USS class (`SectionClass` / `LabelClass` / `MessageClass`), so anything new that needs theming must either be stored on the view or carry one of those classes. `BuildAllViews` ends with an `ApplyTheme()` pass, so a build site that forgets the palette still lands correctly — but only for properties `ApplyTheme` actually touches.
+- **MF64 pad fills are exempt from the theme** — they mirror real hardware LED colors. `Palette.AdaptLed` darkens only the near-white end of the LED palette (White/Grey/DarkGrey), and only in Light theme, because those are invisible on a light panel; saturated colors pass through untouched. `_padRawFill` keeps the pre-adaptation color per pad so a theme switch re-adapts from the original instead of compounding.
 - Widgets render at 40 % opacity until they receive their first MIDI event, then snap to full. Distinguishes "not-yet-touched" from "value is zero".
 - Bottom message strip shows the most recent MIDI event in uppercase (e.g. `MIX FADER CH7  0.66`).
 
@@ -207,6 +222,7 @@ Section visibility is baked into the UI tree, so toggling it rebuilds all views.
 **Read-only**
 - All widgets have `pickingMode = Ignore` so scene clicks pass through.
 - Painter2D-drawn `KnobDisplay` and `PadCell` custom `VisualElement`s — no PNGs, no external widget library.
+- `KnobDisplay` draws a 31-dot ring on a 270° arc (gap at the bottom), a stroked body, and a pointer dot. **All radii are fractions of the element's own size**, never literals, so one knob size constant (`KnobSize`) drives the whole thing. Angles use UI coordinates — y grows *downward*, so 135° is bottom-left, 270° is straight up, 405° is bottom-right. The pointer and the ring share one angle mapping, so the pointer always lands on the last lit dot; changing one without the other breaks that.
 
 ### Configure MF64 pad modes and per-pad LED colors
 
@@ -223,13 +239,14 @@ Priority order at runtime for LED colors:
 
 ## Gotchas
 
+- **A second MIDI port carrying a copy of the same traffic breaks every latch.** `MidiEventManager` connects to *every* MIDI input port and merges them, so a MIDI monitor, loopback (loopMIDI), or network port that echoes a controller delivers each message twice in one frame. Momentary handlers can't tell — on/on then off/off lands in the same place — but anything press-to-toggle toggles on and straight back off, so the button looks dead while the raw events look perfect. `MidiEventManager` warns once per session when it sees the same note from two ports in one frame. Fix with `AllowedDeviceNames` / `BlockedDeviceNames` (substring match on the port name) or the matching fields on `MidiSceneBootstrapper`, whose allow list defaults to `{ "Fighter", "MIDI Mix" }`. **When a latch "doesn't work", check the device list before reading the latch code** — the latch code is usually fine.
 - **First MIDI event per session is often swallowed.** Known Minis quirk. Tell users to press a pad twice on startup.
 - **USB hubs cause detection issues.** Prefer a direct port.
 - **The MF64 Utility must be set to Base Channel 3, Type = Notes, Corner Button Bank Change = disabled.** These are the defaults but check first if events look wrong.
 - **MIDImix master fader is CC 62, not 127.** (127 is a common wrong value online.) Master fader always routes through `OnMasterFader` regardless.
 - **MIDImix Send All button** does not emit its own message — pressing it just triggers a burst of all 33 CC values (24 knobs + 8 faders + master). If you need a hook for "user pressed Send All", listen for the burst pattern; there's no dedicated event.
 - **MIDImix Bank Left/Right** buttons emit notes 25 and 26 but do NOT shift the CC or note ranges of other controls on stock firmware. They're just notification notes.
-- **MIDImix Mute/Rec-Arm LEDs do NOT self-illuminate on press.** The hardware requires the host to echo Note On (velocity 127) back to light them, Note Off / velocity 0 to clear. Add `MidiMixOutput` to the scene and it will auto-mirror presses. Manual control via `MidiMixOutput.Instance.SetMuteLED(ch, lit)` etc. for latched (toggle) behavior.
+- **MIDImix Mute/Rec-Arm LEDs do NOT self-illuminate on press.** The hardware requires the host to echo Note On (velocity 127) back to light them, Note Off / velocity 0 to clear. Add `MidiMixOutput` to the scene and it will auto-mirror the router's state — which, with the default latching, means the LED stays lit until the button is pressed again. Manual control via `MidiMixOutput.Instance.SetMuteLED(ch, lit)` etc.
 - **`MidiFighterOutput.ClearOnStart`** is on by default. It sends velocity 0 to all 64 pads on Start and OnDestroy. Turn it off only if you're intentionally preserving LED state across sessions.
 - **`OnValidate` on `MidiFighterButtonRouter`** sends the current Toggle-On color to all 64 pads whenever the Inspector value changes in Play mode. This is a feature for previewing colors; if it surprises a user, that's why.
 - **URP shader magenta on generated primitives:** in URP projects, do not `Shader.Find("Standard")` — `CreatePrimitive` already assigns a working pipeline material; modify that instead of replacing it.

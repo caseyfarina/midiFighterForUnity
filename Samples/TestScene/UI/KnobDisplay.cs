@@ -4,30 +4,60 @@ using UnityEngine.UIElements;
 namespace MidiFighter64.Samples
 {
     /// <summary>
-    /// Read-only value display shaped like a synth knob: N tick dots on a
-    /// 270° arc whose radii ramp from small (min end) to large (max end),
-    /// with an inner value arc that grows to the current value.
+    /// Read-only value display shaped like a hardware synth knob: a ring of
+    /// uniform tick dots on a 270° arc, a stroked knob body inside it, and a
+    /// filled pointer dot on the body that rotates to the current value. Dots
+    /// at or below the value take the "on" ink, the rest the "off" ink, so the
+    /// value reads at a glance from either the pointer or the ring.
     /// </summary>
     public class KnobDisplay : VisualElement
     {
+        /// <summary>Base stroke width, before <see cref="StrokeScale"/>. Shared
+        /// with <see cref="PadCell"/> so every stroked circle matches.</summary>
         public const float StrokeWidth = 2f;
-        const int TickCount = 12;
+
+        // The ring spans 270° with its gap at the bottom. In UI coordinates y
+        // grows downward, so 135° is bottom-left, 270° is straight up, and
+        // 405° (= 45°) is bottom-right.
         const float ArcStartDeg = 135f;
         const float ArcSweepDeg = 270f;
 
-        // Each tick's radius ramps from small (min end) to large (max end).
-        // Color is white for ticks at/below the current value, dark grey above.
-        const float TickMinFrac = 0.03f;   // radius as fraction of knob size
-        const float TickMaxFrac = 0.08f;
+        const int   DotCount       = 31;
+        const float DotRadiusFrac  = 0.030f;  // uniform, as a fraction of knob size
+        const float RingGapFrac    = 0.055f;  // ring dots → knob body
+        const float PointerRadFrac = 0.075f;  // pointer dot radius
+        const float PointerPosFrac = 0.62f;   // pointer distance, as a fraction of body radius
 
-        // Value arc, drawn just inside the tick ring, grows from ArcStartDeg to
-        // (ArcStartDeg + value * ArcSweepDeg).
-        const float ValueArcInsetFrac = 0.04f;  // gap between ticks and arc
-        const float ValueArcWidth     = 1.5f;
+        float _strokeScale = 1f;
 
-        static readonly Color TickOnColor  = Color.white;
-        static readonly Color TickOffColor = new Color(0.22f, 0.22f, 0.24f);
-        static readonly Color ArcColor     = Color.white;
+        /// <summary>Multiplier on <see cref="StrokeWidth"/>, from the drawer's
+        /// global stroke weight. Everything else stays proportional to the
+        /// element's own size, so only the line thickness changes.</summary>
+        public float StrokeScale
+        {
+            get => _strokeScale;
+            set
+            {
+                if (Mathf.Approximately(_strokeScale, value)) return;
+                _strokeScale = value;
+                MarkDirtyRepaint();
+            }
+        }
+
+        Color _tickOnColor  = Color.white;
+        Color _tickOffColor = new Color(0.22f, 0.22f, 0.24f);
+        Color _outlineColor = new Color(0.55f, 0.55f, 0.60f);
+
+        /// <summary>Ink for lit dots and the pointer, for spent dots, and for the
+        /// knob body outline and ± marks. Set from the drawer's theme palette.</summary>
+        public void SetInk(Color on, Color off, Color outline)
+        {
+            if (_tickOnColor == on && _tickOffColor == off && _outlineColor == outline) return;
+            _tickOnColor  = on;
+            _tickOffColor = off;
+            _outlineColor = outline;
+            MarkDirtyRepaint();
+        }
 
         float _value;
         public float Value
@@ -53,46 +83,49 @@ namespace MidiFighter64.Samples
             var rect = contentRect;
             if (rect.width <= 0 || rect.height <= 0) return;
 
-            var p = ctx.painter2D;
+            var p         = ctx.painter2D;
             float size    = Mathf.Min(rect.width, rect.height);
             var center    = new Vector2(rect.center.x, rect.center.y);
-            float rMinDot = size * TickMinFrac;
-            float rMaxDot = size * TickMaxFrac;
-            float rTickRing = size * 0.5f - rMaxDot - 1f;
+            float stroke  = StrokeWidth * _strokeScale;
+            float rDot    = size * DotRadiusFrac;
+            float rRing   = size * 0.5f - rDot - 1f;
+            float rBody   = rRing - rDot - size * RingGapFrac;
+            if (rBody <= stroke) return;   // too small to draw meaningfully
 
-            // Tick dots along the outer arc
-            for (int i = 0; i < TickCount; i++)
+            // Ring of uniform dots, lit up to the current value.
+            for (int i = 0; i < DotCount; i++)
             {
-                float t = i / (float)(TickCount - 1);
-                float angRad = (ArcStartDeg + t * ArcSweepDeg) * Mathf.Deg2Rad;
-                var pos = new Vector2(
-                    center.x + Mathf.Cos(angRad) * rTickRing,
-                    center.y + Mathf.Sin(angRad) * rTickRing);
+                float t = i / (float)(DotCount - 1);
+                var pos = PointOnArc(center, rRing, ArcStartDeg + t * ArcSweepDeg);
 
-                float dotRadius = Mathf.Lerp(rMinDot, rMaxDot, t);
-                Color c = t <= _value + 0.0001f ? TickOnColor : TickOffColor;
-
-                p.fillColor = c;
+                p.fillColor = t <= _value + 0.0001f ? _tickOnColor : _tickOffColor;
                 p.BeginPath();
-                p.Arc(pos, dotRadius, 0f, 360f);
+                p.Arc(pos, rDot, 0f, 360f);
                 p.Fill();
             }
 
-            // Value arc — grows from start angle to current value, drawn just
-            // inside the tick ring.
-            if (_value > 0.0001f)
-            {
-                float rArc = rTickRing - rMaxDot - size * ValueArcInsetFrac;
-                if (rArc > ValueArcWidth)
-                {
-                    float endDeg = ArcStartDeg + _value * ArcSweepDeg;
-                    p.strokeColor = ArcColor;
-                    p.lineWidth = ValueArcWidth;
-                    p.BeginPath();
-                    p.Arc(center, rArc, ArcStartDeg, endDeg);
-                    p.Stroke();
-                }
-            }
+            // Knob body.
+            p.strokeColor = _outlineColor;
+            p.lineWidth   = stroke;
+            p.BeginPath();
+            p.Arc(center, rBody, 0f, 360f);
+            p.Stroke();
+
+            // Pointer dot — same angle mapping as the ring, so it always lines
+            // up with the last lit dot.
+            var pointer = PointOnArc(center, rBody * PointerPosFrac,
+                                     ArcStartDeg + _value * ArcSweepDeg);
+            p.fillColor = _tickOnColor;
+            p.BeginPath();
+            p.Arc(pointer, size * PointerRadFrac, 0f, 360f);
+            p.Fill();
+        }
+
+        static Vector2 PointOnArc(Vector2 center, float radius, float degrees)
+        {
+            float rad = degrees * Mathf.Deg2Rad;
+            return new Vector2(center.x + Mathf.Cos(rad) * radius,
+                               center.y + Mathf.Sin(rad) * radius);
         }
     }
 }

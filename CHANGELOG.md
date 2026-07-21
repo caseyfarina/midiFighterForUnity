@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **MIDI Mix Mute and Rec-Arm buttons now latch (press-to-toggle) by default.** `MidiMixRouter.LatchMute` and `LatchRecArm` both default to `true`, as do the matching fields on `MidiSceneBootstrapper`. Press once to turn on, press again to turn off; the hardware LED stays lit for as long as the button is on, and the status drawer holds the pad filled. Untick either flag for the previous momentary behaviour. `OnSolo` (Mute-while-SOLO) is unchanged and still momentary.
+- **Drawer message strip reads `ON` / `OFF` for Mute and Rec-Arm** instead of `DOWN` / `UP`, which only described the momentary case.
+
+### Fixed
+- **Latching buttons appeared dead when a second MIDI port carried a copy of the controller's traffic.** `MidiEventManager` connects to every MIDI input port and merges them into one stream, so a monitor, loopback, or network port echoing the same device delivered every message twice — toggling each latch on and straight back off within a single frame. Momentary consumers couldn't see it (on/on then off/off lands in the same place), which is why it only surfaced once latching became the default.
+
+### Added
+- **Fisheye scale slider.** `MidiStatusDrawer.Mf64FisheyeScale` and a **Fisheye Scale** field on `MidiSceneBootstrapper`, 1–6 (default 3 — the previous fixed value). It's the focused row/column's flex-grow weight against the other seven, so the grid stays square at any setting; `1` disables the visible growth without turning the feature off. Assigning it re-applies to a pad that's focused at the time, so the slider is live in play mode.
+- **`EnableFunctionKeys`** on `MidiStatusDrawer` and **Enable Function Keys** on `MidiSceneBootstrapper`, on by default. Gates F1–F3 for projects that bind those keys themselves. Backtick is deliberately never gated — it's the show/hide key, and a hidden drawer with no way back is a dead end; F1, being an alias for it, is gated. Every shortcut also has a scripting equivalent.
+- **Drawer theme (Dark / Light).** New `DrawerTheme` enum and `MidiStatusDrawer.Theme`, plus a **Theme** field on `MidiSceneBootstrapper` and **F3** to cycle at runtime. Light mode flips to light panels with dark ink so the drawer stays readable over bright scenes. Restyles in place — no rebuild, so widgets keep their "seen" state.
+- **Global stroke weight.** `MidiStatusDrawer.StrokeWeight` and a **Stroke Weight** slider on `MidiSceneBootstrapper`, 0.25–4 (default 1). Multiplies `KnobDisplay.StrokeWidth` for every stroked widget — knob bodies and pad rings — via a `StrokeScale` property on `KnobDisplay` and `PadCell`. Radii stay proportional to each element's own size, so only line thickness changes; widgets keep their size, position, and the square pad grid.
+- **Drawer panel opacity.** `MidiStatusDrawer.PanelOpacity` and a **Panel Opacity** slider on `MidiSceneBootstrapper` (0–1, default 0.30 — the previous fixed value). Applies to the section panels and message strip only; widget ink is never faded, so the readout stays legible at any opacity, including 0.
+- **`MidiStatusDrawer.OnValidate`** applies theme and placement live, so both can be dialed in from the component's Inspector during play mode. Scoped to restyle-only settings — anything that rebuilds would destroy and create GameObjects, which `OnValidate` forbids.
+- **Device filtering on `MidiEventManager`** — `AllowedDeviceNames` / `BlockedDeviceNames` (case-insensitive substring match against the port name), `SetDeviceFilter(allowed, blocked)`, and `Reconnect()`. Both lists default to empty, so the runtime component's behaviour is unchanged: every port is still connected unless you narrow it. Skipped ports are logged.
+- **Allowed / Blocked Device Names on `MidiSceneBootstrapper`**, applied to the spawned `MidiEventManager`. The allow list defaults to `{ "Fighter", "MIDI Mix" }` — the two controllers this sample is built around — so the test scene is immune to echoing ports out of the box. Clear it to accept every port.
+- **Duplicate-delivery warning.** `MidiEventManager` warns once per session when the same note arrives from two different ports in the same frame, naming both. The symptom (a latch that never holds) points nowhere near the cause.
+- **`MidiSceneBootstrapper` serialized-default migration.** A new hidden `_serializedVersion` stamp and `MigrateSerializedDefaults()` upgrade instances saved against older defaults. Needed because a bool whose default flips can't be repaired by sniffing its value — a serialized `false` from an older scene is indistinguishable from one the user deliberately unticked — so scenes saved before this release pick up latching instead of silently keeping the old momentary behaviour. Now at version 2: the device allow list needs the same treatment, since an empty array is a legitimate "accept every port" setting.
+
 ## [1.3.0] - 2026-07-21
 
 ### Added
@@ -14,6 +35,10 @@
 - **Bundled font** — `CossetteTitre-Regular.ttf` ships in `Samples/TestScene/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font if the Resources folder is stripped.
 - **`MidiStatusDrawer` public API** — `Placement`, `ScreenFraction`, `ShowMf64`, `ShowMidiMix`, `SetVisibleSections(mf64, mix)`, `FontOverride`, `EnableMf64Fisheye`, `LogLayoutDiagnostics`.
 - **Log Layout Report** (bootstrapper, off by default) — dumps one resolved-geometry report to the console after the drawer is first shown: screen size, derived reference resolution, drawer/grid/cell dimensions, screen coverage, mixer-vs-grid column widths, measured mix section height. Reads `resolvedStyle` only, so it cannot affect layout.
+
+### Changed (this release)
+- **Redrawn `KnobDisplay`** to match a hardware synth knob: a ring of 31 uniform dots (previously 12 with radii ramping small→large), a stroked knob body inside the ring, and a filled pointer dot on the body that rotates to the value. The inner value arc is gone — the pointer replaces it. Dots still light up to the current value, so the reading survives at sizes where the pointer is only a few pixels.
+- **`PadCell.StrokeColor` and `KnobDisplay.SetInk(on, off, outline)` are now instance state**, not private statics, so the theme can repaint them. The knob body outline and ± marks take the palette's pad-stroke color, so every stroked circle in the drawer matches.
 
 ### Changed (drawer visuals)
 - **Knob diameter now tracks the MF64 pad cell** (~64 design units against a 73 cell, up from a fixed 28) so the mixer and pad grid read as one instrument. Derived from `GridSideDesign`, so it stays proportional.

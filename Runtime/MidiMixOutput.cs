@@ -12,10 +12,13 @@ namespace MidiFighter64
     /// Uses jp.keijiro.rtmidi (RtMidi.Runtime) for cross-platform MIDI output.
     ///
     /// When AutoMirrorButtons is enabled (default), Mute / Solo-mute / Rec-Arm
-    /// presses are automatically echoed to light the corresponding LED. Release
-    /// clears it. Toggle-style behavior can be achieved by subscribing to
-    /// <see cref="MidiMixRouter.OnMute"/> and calling <see cref="SetMuteLED"/>
-    /// with your own state.
+    /// state is echoed to light the corresponding LED. It mirrors the router's
+    /// events rather than raw MIDI, so it follows whatever semantics the router
+    /// is using: with <see cref="MidiMixRouter.LatchMute"/> / LatchRecArm on
+    /// (the default) the LED holds until the button is pressed again, and with
+    /// them off it lights on press and clears on release. Solo is always
+    /// momentary. For fully custom state, disable auto-mirror and call
+    /// <see cref="SetMuteLED"/> / <see cref="SetRecArmLED"/> yourself.
     ///
     /// Hotplug: PortCount is polled each Update; if it changes the port is re-opened.
     /// </summary>
