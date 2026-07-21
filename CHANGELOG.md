@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.3.0] - 2026-07-21
 
 ### Added
 - **Status Drawer section on `MidiSceneBootstrapper`** — the drawer is now configurable without selecting the spawned component:
@@ -34,6 +34,11 @@
 - **F2 now cycles `DrawerPlacement`** instead of resizing the drawer between 100 % and 65 % display height. The portrait/landscape compact mode is removed; the drawer is vertically centered in both placements at any aspect ratio.
 
 ## [1.2.0] - 2026-07-20
+
+> **Never released.** This work stayed uncommitted until 2026-07-21, when it was
+> committed together with the 1.3.0 changes. There is no commit or tag that
+> represents 1.2.0 on its own — it reached users as part of `v1.3.0`. The section
+> is kept because it documents a coherent batch of features.
 
 ### Added
 - **MidiStatusDrawer** (Test Scene sample): screen-space UI Toolkit overlay mirroring both controllers in real time. Bottom-right anchored, transparent background, section panels only.

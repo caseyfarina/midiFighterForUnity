@@ -1,6 +1,6 @@
 {
   "name": "com.caseyfarina.midifighter64",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "displayName": "Midi Fighter 64 for Unity",
   "description": "MIDI input + LED output bridge for the DJ Tech Tools Midi Fighter 64 and Akai MIDI Mix. Converts raw MIDI events into typed C# events (grid buttons, knobs, faders, toggles), and drives MF64 LEDs via RtMidi. Built on Unity Input System, Minis, and jp.keijiro.rtmidi. Cross-platform (Windows / macOS / Linux).",
   "unity": "6000.0",

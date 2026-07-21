@@ -8,7 +8,11 @@ Internal notes for people modifying **this package** (not for consumers). See `C
 
 **Branch layout:** `main` = shipped, feature branches merged with tagged releases.
 
-Current release candidate: **1.1.0** on `feat/midimix-and-button-modes`. Merges to `main` and tags `v1.1.0` when ready.
+Current: **1.3.0**, tagged `v1.3.0`, on `main`. Development continues on `feat/midimix-and-button-modes`, which is level with `main`.
+
+**Tag whenever you bump `package.json`.** Consumers install a UPM package from a git URL pinned to a tag (`…midiFighterForUnity.git#v1.3.0`); untagged, that URL resolves to whatever `main` happens to be. The repo went its first three versions with no tags at all, which made 1.0.0–1.2.0 unretrievable after the fact.
+
+`v1.2.0` deliberately does not exist: that work stayed uncommitted until 2026-07-21 and shipped inside `v1.3.0`. See the note in `CHANGELOG.md`.
 
 Version history: see `CHANGELOG.md`.
 
