@@ -18,7 +18,72 @@ namespace MidiFighter64
     /// </summary>
     public class MidiFighterButtonRouter : MonoBehaviour
     {
+        [Tooltip("Optional per-pad Button/Toggle mode config asset. If assigned it " +
+                 "overrides the inline grid below. Use the asset when the layout is " +
+                 "shared across scenes or wants its own version history.")]
         [SerializeField] MidiFighter64ButtonConfig _config;
+
+        [Tooltip("Fallback mode for any pad whose inline entry equals it.")]
+        [SerializeField] MidiFighterButtonMode _inlineDefaultMode = MidiFighterButtonMode.Button;
+
+        [Tooltip("Inline 8×8 pad mode grid, indexed by GridButton.linearIndex " +
+                 "(row 1 top-left = 0, row 8 bottom-right = 63). Edited via the custom " +
+                 "inspector; the raw array is exposed here for serialization.")]
+        [SerializeField] MidiFighterButtonMode[] _inlinePadModes = new MidiFighterButtonMode[64];
+
+        [Tooltip("Inline 8×8 pad active-color grid. Off = use this router's default color for that pad's mode.")]
+        [SerializeField] MidiFighterLEDColor[] _inlinePadColors = new MidiFighterLEDColor[64]; // enum default (Off) = fallback
+
+        // Built from the inline grid on demand, and never saved — it exists only so
+        // the rest of this class can ask one object for a pad's mode regardless of
+        // which of the two config routes is in use.
+        MidiFighter64ButtonConfig _inlineConfig;
+        bool _inlineConfigDirty = true;
+
+        /// <summary>
+        /// The config actually in force: the assigned asset if there is one, otherwise
+        /// a throwaway instance built from the inline grid. Never null, so callers do
+        /// not branch — an untouched inline grid simply reports every pad as
+        /// <see cref="_inlineDefaultMode"/> with no per-pad color, which is exactly
+        /// what "no config assigned" used to mean.
+        /// </summary>
+        MidiFighter64ButtonConfig ActiveConfig
+        {
+            get
+            {
+                if (_config != null) return _config;
+
+                if (_inlineConfig == null)
+                {
+                    _inlineConfig = ScriptableObject.CreateInstance<MidiFighter64ButtonConfig>();
+                    _inlineConfig.name = "MF64ButtonConfig_Inline";
+                    _inlineConfig.hideFlags = HideFlags.DontSave;
+                    _inlineConfigDirty = true;
+                }
+
+                // Rebuilt only when the grid changed, not per pad event — this is read
+                // on every note-on.
+                if (_inlineConfigDirty)
+                {
+                    NormalizeInlineArrays();
+                    _inlineConfig.SetPadModes(_inlineDefaultMode, _inlinePadModes);
+                    _inlineConfig.SetPadColors(_inlinePadColors);
+                    _inlineConfigDirty = false;
+                }
+
+                return _inlineConfig;
+            }
+        }
+
+        /// <summary>Components serialized before these arrays existed deserialize them
+        /// to length 0, because field initializers do not re-run for an already
+        /// serialized instance. Every read below indexes by linearIndex 0–63, so the
+        /// length has to be restored before anything touches them.</summary>
+        void NormalizeInlineArrays()
+        {
+            if (_inlinePadModes  == null || _inlinePadModes.Length  != 64) System.Array.Resize(ref _inlinePadModes,  64);
+            if (_inlinePadColors == null || _inlinePadColors.Length != 64) System.Array.Resize(ref _inlinePadColors, 64);
+        }
 
         [Tooltip("Seconds between OnButtonHold fires while a pad is held. " +
                  "0 = fire every frame (elapsed keeps accumulating).")]
@@ -162,7 +227,7 @@ namespace MidiFighter64
             if (!MidiFighter64InputMap.IsInRange(note)) return;
 
             var btn  = MidiFighter64InputMap.FromNote(note);
-            var mode = _config != null ? _config.GetMode(btn) : MidiFighterButtonMode.Button;
+            var mode = ActiveConfig.GetMode(btn);
 
             if (mode == MidiFighterButtonMode.Toggle)
             {
@@ -184,7 +249,7 @@ namespace MidiFighter64
             if (!MidiFighter64InputMap.IsInRange(note)) return;
 
             var btn  = MidiFighter64InputMap.FromNote(note);
-            var mode = _config != null ? _config.GetMode(btn) : MidiFighterButtonMode.Button;
+            var mode = ActiveConfig.GetMode(btn);
 
             if (mode == MidiFighterButtonMode.Button)
             {
@@ -252,9 +317,11 @@ namespace MidiFighter64
 
         MidiFighterLEDColor GetPerPadColorOr(int noteNumber, MidiFighterLEDColor fallback)
         {
-            if (_config == null) return fallback;
             var btn = MidiFighter64InputMap.FromNote(noteNumber);
-            var c = _config.GetColor(btn);
+            var c = ActiveConfig.GetColor(btn);
+            // Off is the config's "no opinion" value, not a color — it means fall
+            // back to the router's global mode color. That is also what an untouched
+            // inline grid yields, so the old "no config at all" path lands here too.
             return c == MidiFighterLEDColor.Off ? fallback : c;
         }
 
@@ -265,6 +332,11 @@ namespace MidiFighter64
 
         void OnValidate()
         {
+            // Ahead of the play-mode guard: an inline-grid edit has to take effect in
+            // edit mode too, and neither call touches the hardware.
+            NormalizeInlineArrays();
+            _inlineConfigDirty = true;
+
             if (!Application.isPlaying) return;
             if (_toggleOnColor == _lastPreviewColor) return;
             _lastPreviewColor = _toggleOnColor;
@@ -289,7 +361,7 @@ namespace MidiFighter64
             {
                 int note = MidiFighter64InputMap.NOTE_OFFSET + i; // any 36-99 works; we resolve mode via config
                 var btn  = MidiFighter64InputMap.FromNote(note);
-                var mode = _config != null ? _config.GetMode(btn) : MidiFighterButtonMode.Button;
+                var mode = ActiveConfig.GetMode(btn);
                 if (mode != MidiFighterButtonMode.Toggle) continue;
 
                 bool state = _toggleStates.TryGetValue(note, out bool s) && s;
