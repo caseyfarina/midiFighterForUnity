@@ -28,9 +28,16 @@ namespace MidiFighter64
     {
         public static UnityEngine.Color ToUnityColor(this MidiFighterLEDColor c) => c switch
         {
-            MidiFighterLEDColor.Off        => new UnityEngine.Color(0.05f, 0.05f, 0.06f),
-            MidiFighterLEDColor.DarkGrey   => new UnityEngine.Color(0.25f, 0.25f, 0.27f),
-            MidiFighterLEDColor.Grey       => new UnityEngine.Color(0.55f, 0.55f, 0.58f),
+            // The three neutrals are strictly r == g == b, for the same reason
+            // MidiStatusDrawer.Palette's neutrals are: a channel bias reads as a
+            // tint once the pad sits against the semi-transparent panel, and a
+            // blue-biased dark grey reads distinctly brown. DarkGrey is also kept
+            // clear of the dark panel's own lightness — at 0.25 it was close
+            // enough to read as a muddy patch rather than a lit pad, and an
+            // ambiguous patch takes its apparent hue from whatever surrounds it.
+            MidiFighterLEDColor.Off        => new UnityEngine.Color(0.05f, 0.05f, 0.05f),
+            MidiFighterLEDColor.DarkGrey   => new UnityEngine.Color(0.34f, 0.34f, 0.34f),
+            MidiFighterLEDColor.Grey       => new UnityEngine.Color(0.56f, 0.56f, 0.56f),
             MidiFighterLEDColor.White      => UnityEngine.Color.white,
             MidiFighterLEDColor.BrightBlue => new UnityEngine.Color(0.25f, 0.55f, 1.00f),
             MidiFighterLEDColor.DarkBlue   => new UnityEngine.Color(0.10f, 0.20f, 0.60f),
