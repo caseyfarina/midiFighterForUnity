@@ -2,7 +2,7 @@
 
 **Goal:** ship one prefab that carries the entire package — all MIDI input/output routing *and* the on-screen visualization UI. Drag it into any scene, press play, done. No bootstrapper, no runtime assembly, no config mirroring.
 
-**Status:** planned, not started. Supersedes the `DrawerSettings` refactor, which was reverted — see "Why this replaces the settings work".
+**Status: DONE — shipped in 2.0.0.** Kept as the record of why the bootstrapper was removed; the condensed version lives in `DEVNOTES.md`. Steps 3 and 4 were swapped during execution: `MidiFighterTestScene` depended on `EnsureCoreComponents`, so the prefab had to exist before the bootstrapper could be deleted.
 
 **Version:** breaking change to consumer setup → **2.0.0**.
 

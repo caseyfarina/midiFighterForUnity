@@ -4,7 +4,7 @@
 
 **Status:** planning. Design settled for Radial 1 (a reference render exists — see below). A handful of Radial 2 decisions in "Open decisions" must be confirmed before coding.
 
-**Repo:** `caseyfarina/midiFighterForUnity` · **Files:** `Samples/TestScene/UI/`
+**Repo:** `caseyfarina/midiFighterForUnity` · **Files:** `Runtime/UI/`
 
 ---
 

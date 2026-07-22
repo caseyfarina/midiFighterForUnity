@@ -41,8 +41,8 @@ https://github.com/caseyfarina/midiFighterForUnity.git
 
 ### Quick Start
 
-1. Add a GameObject with the **MidiEventManager** and **MidiGridRouter** components.
-2. Optionally add **UnityMainThreadDispatcher** if you need to dispatch work from callbacks.
+1. Drag **`Runtime/MIDI Controller.prefab`** into your scene. That's the whole setup — it carries MIDI input, routing, LED output, and the on-screen status overlay, already wired.
+2. Select the prefab instance to configure anything: device filter, pad modes and colors, MIDI Mix latching, drawer appearance. Every setting lives on the component that owns it.
 3. Subscribe to events:
 
 ```csharp

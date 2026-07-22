@@ -31,20 +31,28 @@ Hardware ─→ Minis (RtMidi) ─→ MidiEventManager (static events)
 
 ---
 
-## Minimum scene setup
+## Scene setup
 
-For MF64 grid input only, the scene needs:
+**Drag `Runtime/MIDI Controller.prefab` into the scene.** That is the whole setup — it carries every component, already wired and configured:
 
-1. `MidiEventManager` (singleton)
-2. `UnityMainThreadDispatcher` (singleton)
-3. `MidiGridRouter` (typed grid events)
+| Component | What it does |
+|---|---|
+| `MidiEventManager` | the only Minis subscriber; merges ports, applies the device filter |
+| `UnityMainThreadDispatcher` | marshals MIDI callbacks onto the main thread |
+| `MidiGridRouter` | typed MF64 grid events |
+| `MidiMixRouter` | typed Akai MIDI Mix events, Mute/Rec-Arm latching |
+| `MidiFighterButtonRouter` | Button/Toggle semantics per pad, pad config, LED colors |
+| `MidiFighterOutput` | drives the physical MF64 LEDs |
+| `MidiMixOutput` | lights MIDI Mix Mute/Rec-Arm (the hardware does NOT self-illuminate — LEDs are host-controlled) |
+| `MidiStatusDrawer` | the on-screen overlay mirroring both controllers |
 
-Add `MidiFighterButtonRouter` if you want Button/Toggle semantics per pad.
-Add `MidiFighterOutput` if you want to drive the physical MF64 LEDs.
-Add `MidiMixRouter` if you also want Akai MIDI Mix events.
-Add `MidiMixOutput` to light the MIDI Mix Mute/Rec-Arm buttons on press (the hardware does NOT self-illuminate — LEDs are host-controlled).
+Every setting lives on the component that owns it — select the prefab instance and configure it there. Don't hunt for a separate config object; there isn't one, deliberately (see `DEVNOTES.md` for why the old bootstrapper was removed).
 
-The sample `MidiSceneBootstrapper` has a public `EnsureCoreComponents(Transform parent = null, bool includeStatusDrawer = true)` static method that spawns all of them on-demand. Consumers can also call it themselves without adding the bootstrapper GameObject; pass `includeStatusDrawer: false` to skip the on-screen overlay.
+Remove a component you don't need — nothing depends on all eight being present. Deleting `MidiStatusDrawer` drops the overlay; deleting both `*Output` components makes the rig input-only.
+
+**Installed via git URL, the package is read-only**, so the prefab can't be edited in place. Configure the *instance* in your scene — those overrides are stored in the scene, which is normal Unity prefab behaviour.
+
+If a component gains a field and the shipped prefab needs regenerating, `Tools → MidiFighter64 → Regenerate Controller Prefab` rebuilds it (only works from an embedded copy of the package).
 
 ---
 
@@ -151,11 +159,9 @@ MidiMixRouter.OnKnob += (channel, row, value) => {
 
 MIDI Mix Mute and Rec-Arm buttons are momentary in *hardware*, but the router latches them by default: `MidiMixRouter.LatchMute` and `LatchRecArm` are both **true**. Press once to turn on, press again to turn off. `OnMute` / `OnRecArm` then fire only on note-on and pass the *new latched state* (not raw isNoteOn). `MidiMixOutput` subscribes to those router events, so the hardware LED stays lit for as long as the button is latched on, and `MidiStatusDrawer` holds the corresponding pad filled.
 
-Untick the flags (or the "MIDI Mix — Latching Buttons" section on `MidiSceneBootstrapper`) for the old momentary behaviour, where the events fire on both note-on and note-off with the raw button state.
+Untick the two flags in the "Latching (press-to-toggle) buttons" section on `MidiMixRouter` for the old momentary behaviour, where the events fire on both note-on and note-off with the raw button state.
 
 `OnSolo` (Mute-while-SOLO) is always momentary — the SOLO modifier has to be held for those notes to be emitted at all, so there is no latch to hold.
-
-`MidiSceneBootstrapper` carries a `_serializedVersion` stamp and a `MigrateSerializedDefaults()` method for this: a bool default that flips can't be repaired by sniffing the value the way `_drawerScreenFraction` is, because a serialized `false` from an older scene is indistinguishable from one the user deliberately unticked. If you flip another bool default, bump `CurrentSerializedVersion` and add a block — don't add a value guard to `NormalizeInlineArrays`.
 
 ### Detect SOLO-held mute presses
 
@@ -169,22 +175,21 @@ MidiMixRouter.OnSolo += (ch, on) => { /* fires when SOLO IS held */ };
 if (MidiMixRouter.IsSoloHeld) { ... }
 ```
 
-### Show a live status drawer overlay (Test Scene sample)
+### Show a live status drawer overlay
 
-`MidiStatusDrawer` is a screen-space UI Toolkit overlay that mirrors both controllers in real time. Add the component to any GameObject (or let `MidiSceneBootstrapper.EnsureCoreComponents()` spawn it).
+`MidiStatusDrawer` is a screen-space UI Toolkit overlay that mirrors both controllers in real time. It ships on the MIDI Controller prefab; delete the component from your scene instance to drop the overlay, or add it to any GameObject to use it standalone.
 
 **Hotkeys**
 - **Backtick** (`` ` ``) or **F1** — show/hide the drawer.
 - **F2** — cycle `DrawerPlacement` (Right Centered ⇄ Screen Centered).
 - **F3** — cycle `DrawerTheme` (Dark ⇄ Light).
 
-The **F-keys only** are gated by `EnableFunctionKeys` (**Enable Function Keys** on the bootstrapper), on by default. Untick it when the project binds F1–F3 itself. **Backtick is never gated** — it's the show/hide key, and a hidden drawer with no way back is a dead end. F1 is an alias for backtick, so it *is* gated. Every shortcut also has a scripting equivalent.
+The **F-keys only** are gated by `EnableFunctionKeys` (**Enable Function Keys** on the drawer), on by default. Untick it when the project binds F1–F3 itself. **Backtick is never gated** — it's the show/hide key, and a hidden drawer with no way back is a dead end. F1 is an alias for backtick, so it *is* gated. Every shortcut also has a scripting equivalent.
 
-**Bootstrapper controls** (Status Drawer section)
-- **Spawn Status Drawer** — untick to keep `EnsureCoreComponents()` from creating the overlay at all.
+**Inspector controls** (on the `MidiStatusDrawer` component)
 - **Placement** — `Right Centered` (pinned right, centered vertically) or `Screen Centered` (centered both axes). Runtime equivalent: `MidiStatusDrawer.Instance.Placement`. Restyles the root container; no rebuild.
 - **Show Midi Fighter 64** / **Show MIDI Mix** — both on by default. Untick one to run a single controller without a dead panel taking up drawer space. Runtime equivalents: `ShowMf64` / `ShowMidiMix`, or `SetVisibleSections(mf64, mix)` to change both with one rebuild.
-- **Drawer Font** — optional typeface override. Empty = the bundled `CossetteTitre-Regular.ttf` in `Samples~/TestScene/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font (Arial/Helvetica) if that Resources folder is missing.
+- **Drawer Font** — optional typeface override. Empty = the bundled `CossetteTitre-Regular.ttf` in `Runtime/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font (Arial/Helvetica) if that Resources folder is missing.
 - **Enable MF64 Fisheye** — the last-touched pad grows while its row/column neighbors deform to compensate. On by default. Also settable at runtime via `MidiStatusDrawer.Instance.EnableMf64Fisheye`; assigning `false` clears any active focus.
 - **Fisheye Scale** — how far the focused pad grows, 1–6 (default 3). Runtime equivalent: `Mf64FisheyeScale`. It's a **flex-grow weight**, not a pixel size or a multiplier: the focused row/column takes N shares against the other seven rows/columns' 1, so the grid stays exactly square and the growth is always paid for by the neighbors. `1` means no visible growth without disabling the feature. Setting it re-applies to a currently focused pad, so the slider is live in play mode.
 
@@ -198,14 +203,14 @@ Section visibility is baked into the UI tree, so toggling it rebuilds all views.
 
 Hiding the MF64 section reclaims its height the same way. **Every term in `DrawerHeight` is conditional on its section, and must stay that way** — a term that outlives the section it measures leaves phantom units in the derived reference, and because `Expand` scales by `min(screenW/refW, screenH/refH)` the drawer then under-fills by exactly that ratio. `Screen Fill` still hits its target; the target is just mostly empty space. This was a real bug: `GridSide` was unconditional, so a mixer-only drawer rendered at ~40% of the display. The Log Layout Report's `sections` line prints the budget's terms for this reason — read it before suspecting `ScreenFraction`.
 
-**Adding a serialized field to `MidiSceneBootstrapper`?** Add a guard to `NormalizeInlineArrays`. Scenes saved before the field existed deserialize it to zero — field initializers do **not** re-run for already-serialized components — so a new `Screen Fill` arrives as `0` and collapses the drawer. This has bitten twice.
+**Adding a serialized field to any rig component?** Field initializers do **not** re-run for an already-serialized component, so on scenes and prefab instances saved before the field existed it arrives at **zero**. If zero is outside the field's legal range, guard it (`if (_screenFraction <= 0f) _screenFraction = 0.90f;`) — a `Screen Fill` of `0` collapses the drawer, and this has bitten twice. `MidiFighterButtonRouter.NormalizeInlineArrays` does the same job for the inline pad arrays, which arrive at length 0. If zero is a *legitimate* value (any bool, or `Panel Opacity` where 0 means "no panel"), a value guard would clobber a deliberate choice and you need a version stamp instead.
 
 **Layout** — read this before changing any drawer sizing. Every rule below fixed a specific bug; the obvious "simplification" for each is the bug.
 
 - MF64 8×8 pad grid on top, MIDI Mix (8 channel strips + horizontal master + SOLO/message/bank utility row) below.
 - **Panel scaling is mandatory.** `PanelSettings` are created in code, so they default to `ConstantPixelSize` — every px a literal screen pixel, drawer overflowing small Game views, resolution ignored. `BuildView` must set `scaleMode = ScaleWithScreenSize` and `screenMatchMode = Expand`. `Expand` (never `Shrink`) is what guarantees the UI is never cropped.
 - **`referenceResolution` is derived, never authored.** Sizes are design units (`GridSideDesign` 600, paddings, `MixSectionHeight` 301); the reference is the drawer's *own design size ÷ `ScreenFraction`*. `Expand` scales by `min(screenW/refW, screenH/refH)`, so giving the reference the drawer's aspect makes the binding axis land exactly on `ScreenFraction` — height on landscape, width on portrait — with no orientation branch. Two failure modes to avoid: a screen-shaped reference (1920×1080) makes portrait displays badly under-fill, and setting it to the *actual* display resolution pins the scale at 1:1, which is `ConstantPixelSize` again.
-- **Screen Fill** (bootstrapper, default 0.90) is the only size knob. `GridSideDesign` sets internal proportions only — scaling it changes nothing on screen, because the derived reference scales with it.
+- **Screen Fill** (default 0.90) is the only size knob. `GridSideDesign` sets internal proportions only — scaling it changes nothing on screen, because the derived reference scales with it.
 - **The pad square is arithmetic, never measured.** `aspect-ratio` is not a USS property in Unity 6000.0 (added later) — don't reach for it unless the package's `unity` minimum rises. Two earlier approaches both failed: `width: 100%` resolved against a shrink-to-fit parent and stretched the drawer to the screen edge (pads rendered as ellipses), and a `GeometryChangedEvent` height-lock guarded on a height mismatch that a shrinking flex parent could never satisfy, re-setting the style every layout pass and **hard-freezing the editor**. If a measured aspect is ever genuinely required, follow Unity's own aspect-ratio custom control: adjust *padding* behind a tolerance threshold, never set `height`.
 - **Column alignment is a coupling.** MIDI Mix channel strips and MF64 pad cells must share identical flex + margin values (`flexGrow:1`, `flexBasis:0`, `marginRight: CellMargin`). Change one, change the other. Neither section may set a `minWidth` — that lets them resolve to different content widths and the 8 columns drift apart.
 - **Widget sizes are derived, not literal.** `KnobSize` tracks the MF64 pad cell (`(GridSideDesign − 8×CellMargin) / 8 × 0.88`) so both sections read as one instrument, and `MixSectionHeight` = `StripHeight` (computed from `KnobSize`, `MixPadSize`, `FaderHeight`, `KnobGap`) + `MixChromeHeight`. Resizing a mixer widget therefore corrects the height budget automatically. Putting a literal size in `BuildMixSection` instead leaves the budget stale and silently throws off Screen Fill. `MixChromeHeight` is the one estimated number — it depends on label metrics, so type-size changes move it.
@@ -228,9 +233,9 @@ Hiding the MF64 section reclaims its height the same way. **Every term in `Drawe
 
 ### Configure MF64 pad modes and per-pad LED colors
 
-`MidiSceneBootstrapper`'s Inspector shows an embedded 8×8 grid: each cell has a **mode checkbox** (Toggle vs Button) and a **color dropdown** (per-pad active LED color). "All Button / All Toggle / All Colors → Off" quick-fill buttons above the grid.
+`MidiFighterButtonRouter`'s Inspector shows an embedded 8×8 grid: each cell has a **mode checkbox** (Toggle vs Button) and a **color dropdown** (per-pad active LED color). "All Button / All Toggle / All Colors → Off" quick-fill buttons above the grid.
 
-Alternatively, create a `MidiFighter64ButtonConfig` asset (Create → MidiFighter64 → Button Config) with the same grid, and drag it into the bootstrapper's **Pad Config Asset** slot — an assigned asset wins over the inline grid.
+Alternatively, create a `MidiFighter64ButtonConfig` asset (Create → MidiFighter64 → Button Config) with the same grid, and drag it into the router's **Pad Config Asset** slot — an assigned asset wins over the inline grid.
 
 Priority order at runtime for LED colors:
 1. Per-pad color from config (unless `Off` = "use fallback").
@@ -241,7 +246,7 @@ Priority order at runtime for LED colors:
 
 ## Gotchas
 
-- **A second MIDI port carrying a copy of the same traffic breaks every latch.** `MidiEventManager` connects to *every* MIDI input port and merges them, so a MIDI monitor, loopback (loopMIDI), or network port that echoes a controller delivers each message twice in one frame. Momentary handlers can't tell — on/on then off/off lands in the same place — but anything press-to-toggle toggles on and straight back off, so the button looks dead while the raw events look perfect. `MidiEventManager` warns once per session when it sees the same note from two ports in one frame. Fix with `AllowedDeviceNames` / `BlockedDeviceNames` (substring match on the port name) or the matching fields on `MidiSceneBootstrapper`, whose allow list defaults to `{ "Fighter", "MIDI Mix" }`. **When a latch "doesn't work", check the device list before reading the latch code** — the latch code is usually fine.
+- **A second MIDI port carrying a copy of the same traffic breaks every latch.** `MidiEventManager` connects to *every* MIDI input port and merges them, so a MIDI monitor, loopback (loopMIDI), or network port that echoes a controller delivers each message twice in one frame. Momentary handlers can't tell — on/on then off/off lands in the same place — but anything press-to-toggle toggles on and straight back off, so the button looks dead while the raw events look perfect. `MidiEventManager` warns once per session when it sees the same note from two ports in one frame. Fix with `AllowedDeviceNames` / `BlockedDeviceNames` (substring match on the port name) on the `MidiEventManager` component. The shipped prefab sets that allow list to `{ "Fighter", "MIDI Mix" }`; note the component's own default is *empty*, meaning "accept every port", so a hand-built rig has no protection until you fill it in. **When a latch "doesn't work", check the device list before reading the latch code** — the latch code is usually fine.
 - **First MIDI event per session is often swallowed.** Known Minis quirk. Tell users to press a pad twice on startup.
 - **USB hubs cause detection issues.** Prefer a direct port.
 - **The MF64 Utility must be set to Base Channel 3, Type = Notes, Corner Button Bank Change = disabled.** These are the defaults but check first if events look wrong.
@@ -277,11 +282,13 @@ The scene requires importing the sample first via **Package Manager → Samples 
 
 ```
 Runtime/                        (always compiled, autoRef'd)
+  MIDI Controller.prefab        — THE entry point: all 8 components, wired
   MidiEventManager              — Minis subscriber, static C# events
   UnityMainThreadDispatcher     — thread-safe action queue
   MidiFighter64InputMap         — pure static: note ↔ (row, col)
   MidiGridRouter                — MF64 grid routing (typed events)
-  MidiFighterButtonRouter       — Button/Toggle layer + LED feedback
+  MidiFighterButtonRouter       — Button/Toggle layer + LED feedback,
+                                  inline 8×8 pad grid
   MidiFighter64ButtonConfig     — ScriptableObject: 8×8 mode grid
   MidiFighterButtonMode         — enum { Button, Toggle }
   MidiFighterOutput             — MF64 LED output via RtMidi
@@ -290,9 +297,16 @@ Runtime/                        (always compiled, autoRef'd)
   MidiMixInputMap               — pure static: CC/note ↔ struct
   MidiMixRouter                 — MIDI Mix routing (typed events)
   MidiMixOutput                 — MIDI Mix LED echo (Mute/Solo/Rec-Arm)
+  UI/
+    MidiStatusDrawer            — live on-screen overlay (UI Toolkit)
+    PadCell / KnobDisplay       — Painter2D custom VisualElements
+    Resources/                  — bundled font + its OFL license
 
 Editor/                         (Editor-only)
-  MidiFighter64ButtonConfigEditor — 8×8 toggle grid inspector
+  MidiFighter64ButtonConfigEditor — 8×8 grid inspector (SO asset)
+  MidiFighterButtonRouterEditor   — 8×8 grid inspector (inline arrays)
+  MidiFighter64PadGridGUI         — shared grid drawing, used by both
+  CreateMidiControllerPrefab      — Tools menu → regenerate the prefab
 
 Tests/Editor/                   (EditMode)
   MidiFighter64InputMapTests    — corner + round-trip asserts
@@ -300,6 +314,5 @@ Tests/Editor/                   (EditMode)
 Samples~/TestScene/             (import via Package Manager)
   MidiFighterTestScene          — self-building demo scene
   MidiDebugUI                   — status bar + MIDI log overlay
-  MidiSceneBootstrapper         — spawns core components
   Editor/CreateMidiTestScene    — Tools menu → scene generator
 ```

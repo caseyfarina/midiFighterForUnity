@@ -8,7 +8,7 @@ Internal notes for people modifying **this package** (not for consumers). See `C
 
 **Branch layout: work directly on `main`.** As of 2026-07-21 this is a single-developer repo and the feature-branch workflow was retired — it added ceremony without review value. Commit to `main`; don't create a feature branch unless there's a specific reason to, and don't assume the usual "branch before committing" default applies here.
 
-Current: **1.3.0**, tagged `v1.3.0`, on `main`.
+Current: **2.0.0**, tagged `v2.0.0`, on `main`.
 
 **Tag whenever you bump `package.json`.** Consumers install a UPM package from a git URL pinned to a tag (`…midiFighterForUnity.git#v1.3.0`); untagged, that URL resolves to whatever `main` happens to be. The repo went its first three versions with no tags at all, which made 1.0.0–1.2.0 unretrievable after the fact.
 
@@ -73,6 +73,25 @@ C:\Users\casey\AppData\Local\Unity\Editor\Editor.log
 
 ---
 
+## Why the bootstrapper was removed (2.0.0)
+
+The package used to ship a `MidiSceneBootstrapper` that spawned every component at runtime and pushed config into them at `Awake`. It carried mirrored copies of eleven drawer settings, the device filter, the latch flags, the pad grid and the LED colors, plus a `_serializedVersion` migration system and a custom editor that mostly drew *other components'* fields.
+
+**None of that was a layering mistake. It all followed from one decision:**
+
+> Components spawned at runtime have no serialized state. Their configuration has to live somewhere persistent. The only persistent thing in the scene was the bootstrapper. So config *had* to be mirrored onto it and pushed inward.
+
+Every symptom came out of that root — the duplication, the rebuild-vs-restyle dispatch question in `ApplyDrawerConfig`, two parallel migration systems, and the "both sets are inspector-visible and read as conflicting" confusion. The four-place tax for adding a setting was a consequence, not a cause.
+
+Shipping a prefab removes the root: each component's own serialized fields become the single source of truth, and the bootstrapper had nothing left to do. The tell that this was right — **every setting it mirrored already existed as a serialized field on the component that owned it.** It was a pure mirror. Deleting it was almost entirely subtraction.
+
+Two things worth knowing if this is ever revisited:
+
+- **The device-filter timing hazard disappeared rather than being fixed.** `MidiEventManager` connects to ports in its own `OnEnable`, which had already happened by the time `EnsureCoreComponents` returned — so the bootstrapper had to apply the filter afterwards and call `Reconnect()`. On a prefab the field is present before `OnEnable` runs. `Reconnect()` is still there for runtime filter changes.
+- **A prefab does not remove per-component serialization discipline.** A field added later still deserializes to zero on existing prefab instances. The difference is you pay it once per setting instead of twice.
+
+---
+
 ## UI Toolkit drawer — hard-won constraints
 
 `CLAUDE.md`'s Layout section states the rules. This is why they exist — each was a real, reproduced failure during the drawer rework.
@@ -81,8 +100,8 @@ C:\Users\casey\AppData\Local\Unity\Editor\Editor.log
 - **Percentage sizes need a definite parent.** `width: 100%` inside a shrink-to-fit (`position:absolute` with only `right`/`top`/`bottom`) parent resolves against the full viewport, dragging the panel to the screen edge. Symptom was pads rendering as ellipses, because `PadCell` deliberately draws an ellipse inscribed in its box — a non-round pad means a non-square cell, not a `PadCell` bug.
 - **Runtime-created `PanelSettings` default to `ConstantPixelSize`.** Easy to miss because the UI still renders; it just ignores resolution. Anything created via `ScriptableObject.CreateInstance<PanelSettings>()` needs its scale mode set explicitly.
 - **`aspect-ratio` is not in USS on Unity 6000.0.** It's in later docs, so search results will suggest it. The package's declared minimum is 6000.0.
-- **Don't push *rebuilding* drawer config from `OnValidate`.** A rebuild destroys and creates GameObjects — illegal from `OnValidate` and a route to editor deadlock. `MidiSceneBootstrapper.OnValidate` deliberately only normalizes fields. `MidiStatusDrawer.OnValidate` exists but is scoped to `ApplyTheme` + `ApplyPlacement`, both of which restyle live elements and touch neither the tree nor any GameObject. Anything you add there must be in that class, or the freeze comes back.
-- **New serialized fields on `MidiSceneBootstrapper` need a migration, and there are two kinds.** Field initializers don't re-run for already-serialized components, so scenes saved before the field existed deserialize it to zero. If zero is outside the field's legal range (`_drawerScreenFraction`, `_mf64FisheyeScale`, `_drawerStrokeWeight`) a value guard in `NormalizeInlineArrays` is enough. If zero is a *legitimate* setting — any bool, and `_drawerPanelOpacity`, where 0 means "no panel" — a guard would clobber a deliberate choice, so it needs a `MigrateSerializedDefaults` block and a `CurrentSerializedVersion` bump. Picking the wrong one is silent. Has caused two separate "why is the drawer tiny" investigations.
+- **Don't push *rebuilding* drawer config from `OnValidate`.** A rebuild destroys and creates GameObjects — illegal from `OnValidate` and a route to editor deadlock. `MidiStatusDrawer.OnValidate` exists but is scoped to `ApplyTheme` + `ApplyPlacement`, both of which restyle live elements and touch neither the tree nor any GameObject. Anything you add there must be in that class, or the freeze comes back.
+- **New serialized fields need a migration, and there are two kinds.** Field initializers don't re-run for an already-serialized component, so scenes and prefab instances saved before the field existed deserialize it to zero. If zero is outside the field's legal range (`_screenFraction`, `_mf64FisheyeScale`, `_strokeWeight`, and the router's inline pad arrays which arrive at length 0) a value guard is enough. If zero is a *legitimate* setting — any bool, and `_panelOpacity`, where 0 means "no panel" — a guard would clobber a deliberate choice and it needs a version stamp instead. Picking the wrong one is silent. Has caused two separate "why is the drawer tiny" investigations.
 - **Every term in `DrawerHeight` must be conditional on the section it measures.** `GridSide` was unconditional while `MixSectionHeight` was gated on `_showMidiMix`, so a mixer-only drawer carried 600 phantom design units — reference ~1082 units tall against ~452 of content, and under `Expand`'s `min()` the whole thing rendered at ~40% of the display at Screen Fill 1.0. The tell is that `Screen Fill` appears broken while being exactly correct: it fills a budget that is mostly empty space. Note the message strip becomes its own panel when Mix is hidden, so all four visibility combinations have content and the budget has to cover each. Fixed 2026-07-21; the Log Layout Report now prints a `sections` line showing the budget's terms.
 - **Every drawer color goes through `Palette.For(theme, opacity)`; every stroke through `StrokeWidth * StrokeScale`.** A literal at a build site survives the initial build and then gets skipped by `ApplyTheme`, so it only diverges once the user changes theme — long after the change that caused it.
 
@@ -97,7 +116,7 @@ What makes this expensive to diagnose:
 - **Momentary mode looks perfect under the same fault.** on/on then off/off lands in the same place. So it presents as "latching is broken", and the latch code is where you'll look. It's fine.
 - The router, the LED output, and the drawer all looked correct on inspection, because they were. Reading source cannot find this — only logging raw arrivals can. `[MixDiag]`-style temporary logging in `MidiMixRouter.HandleNoteOn` showing note + frame + device is what caught it.
 
-Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEventManager`, an allow-list default of `{ "Fighter", "MIDI Mix" }` on `MidiSceneBootstrapper` (migrated to old scenes via `_serializedVersion` 2), and a once-per-session warning naming both offending ports.
+Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEventManager`, an allow-list default of `{ "Fighter", "MIDI Mix" }` baked into the shipped **MIDI Controller prefab** (the component's own default is an empty list, i.e. accept every port — so a hand-built rig has no protection until it is filled in), and a once-per-session warning naming both offending ports.
 
 ---
 
@@ -106,11 +125,10 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 - **First MIDI event per channel is often lost.** Minis creates the device on first event and subscribes callbacks *after*, so event #1 slips through. Would need a fix in Minis or a warmup message. Workaround: doc note tells users to press twice on startup.
 - **RtMidi cross-platform** — package works on Windows. macOS/Linux paths through RtMidi should work but haven't been hardware-tested.
 - **MIDI Mix bank/shift note remapping** — the mixer sends different notes when Bank Left/Right is active. Currently the router just fires the raw event; a "bank-aware" mode could remap them.
-- **Consumer-facing MidiSceneBootstrapper** — currently in `Samples~/`. Consider moving `MidiSceneBootstrapper.EnsureCoreComponents` (or a subset) to Runtime so consumers can bootstrap without importing the sample.
-- ~~Bundled font has no license file.~~ **Resolved.** Cossette Titre is a Google Font under SIL OFL 1.1 (Copyright 2025 The Cossette Project Authors). The upstream `OFL.txt` now sits beside the font in `Samples/TestScene/UI/Resources/`, and `Third Party Notices.md` at the package root records it. No Reserved Font Names, so the font may be renamed or modified. Redistribution inside a larger work is expressly permitted; selling the font on its own is not.
+- ~~Bundled font has no license file.~~ **Resolved.** Cossette Titre is a Google Font under SIL OFL 1.1 (Copyright 2025 The Cossette Project Authors). The upstream `OFL.txt` now sits beside the font in `Runtime/UI/Resources/`, and `Third Party Notices.md` at the package root records it. No Reserved Font Names, so the font may be renamed or modified. Redistribution inside a larger work is expressly permitted; selling the font on its own is not.
 - **"No Theme Style Sheet set to PanelSettings" warning** on every drawer build. Accurate — `BuildView` only assigns `themeStyleSheet` when one is supplied. Harmless here because every element is styled explicitly, but it's console noise. Fix: ship a `.tss` theme asset in the sample's `Resources` and load it alongside the font.
 - **`MixChromeHeight` is the last estimated number in the layout.** `MixSectionHeight` is now derived (`StripHeight` from the widget constants + `MixChromeHeight`), but the chrome — master row, utility row, section padding — depends on label metrics, so the bundled font and type sizes shift it. It only affects how exactly `ScreenFill` is hit; it can never make the pad grid non-square. Correct it from the `mix section h` line of the Log Layout Report.
-- **Drawer fields are duplicated** on `MidiStatusDrawer` and `MidiSceneBootstrapper` (`Placement`, `ScreenFraction`, theme, panel opacity, stroke weight, `ShowMf64`, `ShowMidiMix`, fisheye + scale, function keys, font). The bootstrapper wins at `Awake`, but both sets are inspector-visible and read as conflicting in edit mode. This list keeps growing — every new drawer setting has to be added in four places (drawer field + property, bootstrapper field, `ApplyDrawerConfig`, and the custom editor). `[HideInInspector]` on the drawer's copies would settle the confusion; a small serializable settings struct shared by both would settle the duplication.
+- ~~Drawer fields are duplicated on `MidiStatusDrawer` and `MidiSceneBootstrapper`.~~ **Resolved in 2.0.0** by deleting the bootstrapper — see "Why the bootstrapper was removed" above. A new drawer setting now costs one field and one property on the drawer itself.
 
 ---
 

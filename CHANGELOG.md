@@ -1,12 +1,27 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.0] — 2026-07-22
+
+The whole package now ships as **one prefab**. Drag `Runtime/MIDI Controller.prefab` into a scene and everything works — no bootstrapper, no runtime assembly, no component whose job is configuring other components.
+
+### Breaking
+- **`MidiSceneBootstrapper` and `MidiSceneBootstrapper.EnsureCoreComponents()` are removed.** Scene setup is now "drag in the prefab". The bootstrapper was a pure mirror: every setting it carried already existed as a serialized field on the component that owned it, and it duplicated them only because components spawned at runtime have no serialized state of their own. The prefab removes that reason, and with it the mirrored fields, the four `ApplyX` push methods, the version-stamped migration machinery, and a custom editor that mostly drew other components' fields.
+- **`MidiStatusDrawer`, `PadCell`, `KnobDisplay`, `DrawerPlacement` and `DrawerTheme` moved from `MidiFighter64.Samples` to `MidiFighter64`**, and from the Test Scene sample into `Runtime/UI/`. The drawer is part of the package proper now rather than sample code. A prefab shipped in Runtime could not reference a Samples component, so this was a prerequisite for including the visualization in the prefab at all.
+- **The inline 8×8 pad grid moved from `MidiSceneBootstrapper` to `MidiFighterButtonRouter`**, the component it actually configures. Existing `MidiFighter64ButtonConfig` assets are unaffected and still win over the inline grid.
+- **Per-component configuration.** Device filter on `MidiEventManager`, latch flags on `MidiMixRouter`, pad config and LED colors on `MidiFighterButtonRouter`, drawer settings on `MidiStatusDrawer`. Configure the prefab instance in your scene.
+
+### Added
+- **`Runtime/MIDI Controller.prefab`** — all eight components, wired and configured, with the `{ "Fighter", "MIDI Mix" }` device allow list baked in. That last part is load-bearing: `MidiEventManager`'s own default is an empty list meaning "merge every MIDI input port", and the filter previously came from a bootstrapper default. Without it, a monitor or loopback port echoing a controller delivers every message twice and every latch appears dead.
+- **`Tools → MidiFighter64 → Regenerate Controller Prefab`** — maintainer tool that rebuilds the shipped prefab deterministically when a component gains a field, so it can't drift from the components it represents.
+- **`MidiFighterButtonRouterEditor`** — draws the router's inline pad grid, reusing the existing `MidiFighter64PadGridGUI` shared with the ScriptableObject inspector.
 
 ### Changed
-- **MIDI Mix Mute and Rec-Arm buttons now latch (press-to-toggle) by default.** `MidiMixRouter.LatchMute` and `LatchRecArm` both default to `true`, as do the matching fields on `MidiSceneBootstrapper`. Press once to turn on, press again to turn off; the hardware LED stays lit for as long as the button is on, and the status drawer holds the pad filled. Untick either flag for the previous momentary behaviour. `OnSolo` (Mute-while-SOLO) is unchanged and still momentary.
+- **MIDI Mix Mute and Rec-Arm buttons now latch (press-to-toggle) by default.** `MidiMixRouter.LatchMute` and `LatchRecArm` both default to `true`. Press once to turn on, press again to turn off; the hardware LED stays lit for as long as the button is on, and the status drawer holds the pad filled. Untick either flag for the previous momentary behaviour. `OnSolo` (Mute-while-SOLO) is unchanged and still momentary.
 - **Drawer message strip reads `ON` / `OFF` for Mute and Rec-Arm** instead of `DOWN` / `UP`, which only described the momentary case.
 
 ### Fixed
+- **The status drawer showed the wrong pad colors when the inline grid was in use.** `MidiFighterButtonRouter.Config` returned the raw serialized field, which is null unless a `MidiFighter64ButtonConfig` asset is assigned. The drawer resolves both per-pad LED color and Button/Toggle mode through that property, so it fell back to the router's global colors — the hardware lit correctly while the on-screen mirror did not, which made it look like a drawer bug. `Config` now returns the resolved config, asset or inline.
+- **The drawer built every pad as Button mode regardless of configuration.** `OnEnable` called `BuildAllViews()` before locating the button router, so the pad grid was always constructed against a null config. Long-standing — the bootstrapper's `Awake` also ran before the drawer's `OnEnable`, so it was equally broken there; it only became visible once there was per-pad config worth mirroring.
 - **Drawer under-filled the display when the MF64 section was hidden.** `DrawerHeight` gated the mix section on `_showMidiMix` but added the pad grid's 600 design units unconditionally, so a mixer-only drawer budgeted ~1082 units for ~452 units of content. `Expand` scales by `min(screenW/refW, screenH/refH)`, so height bound against the phantom units and the mixer rendered at roughly 40% of the display at Screen Fill 1.0. Every term is now conditional on its section, and the standalone message strip (built whenever Mix is hidden) is budgeted too, so all four visibility combinations fill correctly. The Log Layout Report gained a `sections` line listing the budget's terms.
 - **Latching buttons appeared dead when a second MIDI port carried a copy of the controller's traffic.** `MidiEventManager` connects to every MIDI input port and merges them into one stream, so a monitor, loopback, or network port echoing the same device delivered every message twice — toggling each latch on and straight back off within a single frame. Momentary consumers couldn't see it (on/on then off/off lands in the same place), which is why it only surfaced once latching became the default.
 

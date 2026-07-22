@@ -319,7 +319,7 @@ MidiEventManager.Instance.SetDeviceFilter(
     blocked: new[] { "loopMIDI" });             // applied after the allow list
 </code></pre>
 
-<p>Both lists are also fields on <code>MidiEventManager</code> and on <code>MidiSceneBootstrapper</code>, whose allow list defaults to the two controllers this package targets. Skipped ports are logged.</p>
+<p>Both lists are fields on <code>MidiEventManager</code>. The shipped <strong>MIDI Controller</strong> prefab sets the allow list to the two controllers this package targets; the component's own default is empty, meaning every port is accepted. Skipped ports are logged.</p>
 
 <h3 id="midimix-leds">MIDI Mix LED echo</h3>
 <p>The Mute (amber) and Rec-Arm (red) buttons on the MIDI Mix <strong>do not self-illuminate on press</strong>. The hardware only lights them when it receives a matching Note On back from the host. Add <code>MidiMixOutput</code> to your scene and it will auto-mirror presses.</p>
@@ -342,7 +342,7 @@ MidiMixOutput.Instance.ClearAllLEDs();
 
 <p><code>MidiStatusDrawer</code> (Test Scene sample) is a screen-space overlay that mirrors both controllers live: the 8&times;8 pad grid, all 24 knobs, 9 faders, the mute / rec-arm / solo / bank buttons, and a readout of the most recent MIDI event. It renders on every active display and is read-only — all widgets ignore picking, so clicks pass straight through to your scene.</p>
 
-<p>Add the component to any GameObject, or let <code>MidiSceneBootstrapper.EnsureCoreComponents()</code> spawn it.</p>
+<p>It ships on the <strong>MIDI Controller</strong> prefab. Delete the component from your scene instance to drop the overlay, or add it to any GameObject to use it standalone.</p>
 
 <h3>Hotkeys</h3>
 <table>
@@ -398,7 +398,7 @@ MidiMixOutput.Instance.ClearAllLEDs();
   <li>A raw MIDI event log overlay for debugging.</li>
 </ul>
 
-<p><code>MidiSceneBootstrapper</code> carries the whole configuration in one inspector: device filtering, the MF64 pad mode / color grid, LED colors, MIDI Mix latching, and every drawer setting above. It spawns any missing core components at <code>Awake</code>, so an empty scene with just this one component is a working setup.</p>
+<p>Drag <code>Runtime/MIDI Controller.prefab</code> into a scene and everything works. It carries all eight components &mdash; MIDI input, both routers, both LED outputs, and the status drawer &mdash; already wired and configured. Every setting lives on the component that owns it: device filtering on <code>MidiEventManager</code>, the MF64 pad mode / color grid and LED colors on <code>MidiFighterButtonRouter</code>, latching on <code>MidiMixRouter</code>, and the drawer settings above on <code>MidiStatusDrawer</code>. Select the prefab instance in your scene to configure it.</p>
 
 <hr>
 
