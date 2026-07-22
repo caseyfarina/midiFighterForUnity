@@ -1,0 +1,170 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7582299698963101027
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4871517986103897033}
+  - component: {fileID: 7120319650830012907}
+  - component: {fileID: 5308306908604888989}
+  - component: {fileID: 6859979672801538734}
+  - component: {fileID: 3828077475715088520}
+  - component: {fileID: 7135291068641477280}
+  - component: {fileID: 2193330544267804036}
+  - component: {fileID: 1186801779116256451}
+  - component: {fileID: 242840301032559749}
+  m_Layer: 0
+  m_Name: MIDI Controller
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4871517986103897033
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7120319650830012907
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78eb1ef9ce4d2584297f070f14584361, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiEventManager
+  _allowedDeviceNames:
+  - Fighter
+  - MIDI Mix
+  _blockedDeviceNames: []
+--- !u!114 &5308306908604888989
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 417d68cc4b094a94394c8c533f93669e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.UnityMainThreadDispatcher
+--- !u!114 &6859979672801538734
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0eb11509e17d28549b0df8108bcb6b1f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiGridRouter
+--- !u!114 &3828077475715088520
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 17cc58fd2c1afb84f9c12c72d9f6cb1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiMixRouter
+  _latchMute: 1
+  _latchRecArm: 1
+--- !u!114 &7135291068641477280
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f9710124ec5f22479a77e96126facd6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiFighterButtonRouter
+  _config: {fileID: 0}
+  _inlineDefaultMode: 0
+  _inlinePadModes: 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  _inlinePadColors: 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  _holdRepeatInterval: 0
+  _driveToggleLEDs: 1
+  _toggleOnColor: 3
+  _toggleOffColor: 1
+  _driveButtonLEDs: 1
+  _buttonDownColor: 56
+--- !u!114 &2193330544267804036
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 04c8ba9f60d824c449549de72ce6317e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiFighterOutput
+  ledChannelIndex: 2
+  _clearOnStart: 1
+--- !u!114 &1186801779116256451
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe55d0c114e2f334f8c5f6a9032d8e6e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiMixOutput
+  _autoMirrorButtons: 1
+  _clearOnStart: 1
+--- !u!114 &242840301032559749
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7582299698963101027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3f5963c8a67c66408c6d9ba8b72b8e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MidiFighter64.Runtime::MidiFighter64.MidiStatusDrawer
+  _themeStyleSheet: {fileID: 0}
+  _enableMf64Fisheye: 1
+  _mf64FisheyeScale: 3
+  _showMf64: 1
+  _showMidiMix: 1
+  _screenFraction: 0.9
+  _logLayoutDiagnostics: 0
+  _enableFunctionKeys: 1
+  _placement: 0
+  _fontOverride: {fileID: 0}
+  _theme: 0
+  _panelOpacity: 0.3
+  _strokeWeight: 1
