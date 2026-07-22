@@ -123,10 +123,20 @@ namespace MidiFighter64
             set => _toggleOffColor = value;
         }
 
-        /// <summary>The ScriptableObject that decides Button vs Toggle per pad. May be null.</summary>
+        /// <summary>
+        /// The config actually in force: the assigned asset, or a throwaway instance
+        /// built from this router's inline grid. Never null.
+        ///
+        /// It returns <see cref="ActiveConfig"/> rather than the raw serialized field
+        /// on purpose. External readers — MidiStatusDrawer resolves both per-pad LED
+        /// colour and Button/Toggle mode through here — would otherwise see null
+        /// whenever the inline grid is in use and silently fall back to the router's
+        /// global colours, so a configured pad grid would light the hardware correctly
+        /// while the on-screen mirror showed the wrong colours entirely.
+        /// </summary>
         public MidiFighter64ButtonConfig Config
         {
-            get => _config;
+            get => ActiveConfig;
             set => _config = value;
         }
 
