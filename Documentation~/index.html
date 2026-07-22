@@ -83,7 +83,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 40px 0; }
     <li><a href="#palette">LED color palette</a></li>
     <li><a href="#midimix">Akai MIDI Mix</a></li>
     <li><a href="#drawer">Status drawer overlay</a></li>
-    <li><a href="#testscene">Test scene</a></li>
+    <li><a href="#testscene">Checking it works</a></li>
     <li><a href="#api">API reference</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
   </ul>
@@ -117,16 +117,14 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 40px 0; }
 
 <h2 id="quickstart">Quick start</h2>
 
-<p>Two paths:</p>
-
-<h3>A. Use the generated test scene</h3>
 <ol>
-  <li>Import the sample: <strong>Package Manager &rarr; Samples &rarr; Test Scene &rarr; Import</strong></li>
-  <li>Run <strong>Tools &rarr; MidiFighter64 &rarr; Create Test Scene</strong></li>
-  <li>Press Play — press pads on the MF64 to light spheres on-screen and LEDs on the hardware</li>
+  <li>Drag <code>Runtime/MIDI Controller.prefab</code> into your scene</li>
+  <li>Press Play, then press a pad or move a knob</li>
 </ol>
 
-<h3>B. Build your own</h3>
+<p>The status drawer mirrors both controllers live, so if a control moves on screen the whole chain is working. Press <code>`</code> to hide it. Select the prefab instance to configure anything &mdash; every setting lives on the component that owns it.</p>
+
+<h3>Subscribing to events</h3>
 <ol>
   <li>Add a GameObject to your scene, attach <code>MidiEventManager</code>, <code>UnityMainThreadDispatcher</code>, <code>MidiGridRouter</code> (and <code>MidiMixRouter</code> if using MIDI Mix)</li>
   <li>Add <code>MidiFighterButtonRouter</code> if you want Button/Toggle semantics with LED feedback</li>
@@ -340,7 +338,7 @@ MidiMixOutput.Instance.ClearAllLEDs();
 
 <h2 id="drawer">Status drawer overlay</h2>
 
-<p><code>MidiStatusDrawer</code> (Test Scene sample) is a screen-space overlay that mirrors both controllers live: the 8&times;8 pad grid, all 24 knobs, 9 faders, the mute / rec-arm / solo / bank buttons, and a readout of the most recent MIDI event. It renders on every active display and is read-only — all widgets ignore picking, so clicks pass straight through to your scene.</p>
+<p><code>MidiStatusDrawer</code> is a screen-space overlay that mirrors both controllers live: the 8&times;8 pad grid, all 24 knobs, 9 faders, the mute / rec-arm / solo / bank buttons, and a readout of the most recent MIDI event. It renders on every active display and is read-only — all widgets ignore picking, so clicks pass straight through to your scene.</p>
 
 <p>It ships on the <strong>MIDI Controller</strong> prefab. Delete the component from your scene instance to drop the overlay, or add it to any GameObject to use it standalone.</p>
 
@@ -380,15 +378,11 @@ MidiMixOutput.Instance.ClearAllLEDs();
 
 <hr>
 
-<h2 id="testscene">Test scene</h2>
+<h2 id="testscene">Checking it works</h2>
 
-<p>The Test Scene sample gives you a running visual + LED integration test in one click.</p>
+<p>The package ships no samples &mdash; the prefab is the integration test. Drag <code>Runtime/MIDI Controller.prefab</code> into any scene and press Play. The status drawer shows all 64 pads, 24 knobs, 9 faders and the mute / rec-arm buttons responding live, with the most recent MIDI event named at the bottom.</p>
 
-<ol>
-  <li><strong>Package Manager &rarr; Midi Fighter 64 &rarr; Samples &rarr; Test Scene &rarr; Import</strong></li>
-  <li><strong>Tools &rarr; MidiFighter64 &rarr; Create Test Scene</strong> — saves <code>MidiControllersTestScene.unity</code> under <code>Assets/</code></li>
-  <li>Press Play</li>
-</ol>
+<p>If nothing moves, check the device filter first &mdash; a second MIDI port carrying a copy of the same traffic is the most common cause, and it does not present as a device problem.</p>
 
 <p>The scene includes:</p>
 <ul>
@@ -512,7 +506,7 @@ MidiMixOutput.Instance.ClearAllLEDs();
 
 <h3>Spheres render magenta in URP</h3>
 <ul>
-  <li>Fixed as of v1.1.0 — <code>MidiFighterTestScene</code> now reuses the material Unity's <code>CreatePrimitive</code> assigns, which has the correct pipeline shader.</li>
+  <li>In URP, do not <code>Shader.Find("Standard")</code> on a generated primitive &mdash; <code>CreatePrimitive</code> already assigns a working pipeline material. Modify that instead of replacing it.</li>
 </ul>
 
 <h3>LEDs stay lit after exiting Play</h3>

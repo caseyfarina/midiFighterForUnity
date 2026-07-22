@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace MidiFighter64.Samples
+namespace MidiFighter64
 {
     /// <summary>
     /// Rotates this GameObject continuously. Rotation speed is driven by

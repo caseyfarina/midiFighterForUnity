@@ -1,6 +1,6 @@
 {
   "name": "com.caseyfarina.midifighter64",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "displayName": "Midi Fighter 64 for Unity",
   "description": "MIDI input + LED output bridge for the DJ Tech Tools Midi Fighter 64 and Akai MIDI Mix. Converts raw MIDI events into typed C# events (grid buttons, knobs, faders, toggles), and drives MF64 LEDs via RtMidi. Built on Unity Input System, Minis, and jp.keijiro.rtmidi. Cross-platform (Windows / macOS / Linux).",
   "unity": "6000.0",
@@ -9,7 +9,6 @@
   "license": "MIT",
   "dependencies": {
     "com.unity.inputsystem": "1.7.0",
-    "com.unity.ugui": "2.0.0",
     "jp.keijiro.minis": "1.3.2",
     "jp.keijiro.rtmidi": "2.2.0"
   },
@@ -22,13 +21,6 @@
     "input",
     "vj",
     "dj"
-  ],
-  "samples": [
-    {
-      "displayName": "Test Scene",
-      "description": "MF64 + MIDI Mix test scene. Includes an 8x8 sphere grid with button-press highlighting, a Play Wave button that drives both on-screen and hardware LEDs, and a raw MIDI event log. Run 'Tools > MidiFighter64 > Create Test Scene' after import to build the scene.",
-      "path": "Samples~/TestScene"
-    }
   ],
   "author": {
     "name": "Casey Farina",

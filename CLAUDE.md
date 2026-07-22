@@ -270,11 +270,16 @@ Priority order at runtime for LED colors:
 
 ---
 
-## Test scene
+## Checking it works
 
-The `Test Scene` sample includes a menu item `Tools → MidiFighter64 → Create Test Scene` that generates a scene with an 8×8 sphere grid, a wave-animation UI button, and a raw MIDI log overlay. Use it as a quick integration test.
+There is no sample to import — the package ships no samples at all. The integration test is the prefab itself:
 
-The scene requires importing the sample first via **Package Manager → Samples → Test Scene → Import**.
+1. Drag `Runtime/MIDI Controller.prefab` into any scene.
+2. Press Play, then press a pad or move a knob.
+
+The status drawer mirrors both controllers live — all 64 pads, 24 knobs, 9 faders, and the mute / rec-arm buttons — with the most recent MIDI event named in the strip at the bottom. If a control moves on screen, the whole chain from hardware through `MidiEventManager` to the routers is working. Press `` ` `` to hide the drawer once you're satisfied.
+
+If nothing moves, check the device list first (see Gotchas) — a duplicate MIDI port is the most common cause and it does not look like a device problem.
 
 ---
 
@@ -297,6 +302,10 @@ Runtime/                        (always compiled, autoRef'd)
   MidiMixInputMap               — pure static: CC/note ↔ struct
   MidiMixRouter                 — MIDI Mix routing (typed events)
   MidiMixOutput                 — MIDI Mix LED echo (Mute/Solo/Rec-Arm)
+  MidiToggle                    — example: pad toggles a GameObject
+  MidiRotator                   — example: spin a transform
+  MidiMixCloner                 — example: mixer drives cloned objects
+  MidiNoteLogger                — example: log raw notes
   UI/
     MidiStatusDrawer            — live on-screen overlay (UI Toolkit)
     PadCell / KnobDisplay       — Painter2D custom VisualElements
@@ -306,13 +315,11 @@ Editor/                         (Editor-only)
   MidiFighter64ButtonConfigEditor — 8×8 grid inspector (SO asset)
   MidiFighterButtonRouterEditor   — 8×8 grid inspector (inline arrays)
   MidiFighter64PadGridGUI         — shared grid drawing, used by both
+  MidiToggleEditor                — inspector for the MidiToggle example
   CreateMidiControllerPrefab      — Tools menu → regenerate the prefab
 
 Tests/Editor/                   (EditMode)
   MidiFighter64InputMapTests    — corner + round-trip asserts
 
-Samples~/TestScene/             (import via Package Manager)
-  MidiFighterTestScene          — self-building demo scene
-  MidiDebugUI                   — status bar + MIDI log overlay
-  Editor/CreateMidiTestScene    — Tools menu → scene generator
+(no samples — the prefab is the entry point)
 ```

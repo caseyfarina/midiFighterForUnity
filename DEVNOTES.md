@@ -8,7 +8,7 @@ Internal notes for people modifying **this package** (not for consumers). See `C
 
 **Branch layout: work directly on `main`.** As of 2026-07-21 this is a single-developer repo and the feature-branch workflow was retired — it added ceremony without review value. Commit to `main`; don't create a feature branch unless there's a specific reason to, and don't assume the usual "branch before committing" default applies here.
 
-Current: **2.0.0**, tagged `v2.0.0`, on `main`.
+Current: **2.1.0**, tagged `v2.1.0`, on `main`.
 
 **Tag whenever you bump `package.json`.** Consumers install a UPM package from a git URL pinned to a tag (`…midiFighterForUnity.git#v1.3.0`); untagged, that URL resolves to whatever `main` happens to be. The repo went its first three versions with no tags at all, which made 1.0.0–1.2.0 unretrievable after the fact.
 
@@ -22,20 +22,19 @@ Version history: see `CHANGELOG.md`.
 
 The package source lives in `Packages/midiFighterForUnity/`. It's a local UPM package — Unity picks it up directly.
 
-### Working on sample scripts
+### There are no samples (2.1.0)
 
-The `Samples~/TestScene/` folder is hidden from Unity by the `~` suffix (UPM convention). To iterate on sample scripts, temporarily **rename `Samples~/` → `Samples/`** so Unity compiles them in place, then rename back before committing a release.
+The `Samples/` folder is gone and `package.json` declares no `samples` block. Everything ships in `Runtime/` and `Editor/`, always compiled, always reachable.
 
-If you keep the tilde and edit source, changes won't be picked up until the user re-imports the sample via Package Manager — which is fine for consumers but slow for development.
+This removed a standing chore rather than a feature. The folder had to be `Samples~/` (tilde-hidden) for UPM to offer it as an importable sample, but `Samples/` (no tilde) for Unity to compile it during development — so the layout had to be renamed back and forth around every release, and in practice it never was: `package.json` pointed at `Samples~/TestScene` while the folder was `Samples/`, which meant Package Manager's **Import** button never resolved and no consumer could reach the sample anyway.
 
-**Deliberate current state: the folder stays `Samples/` (no tilde).** This repo has one user, who works in the editor, so the sample is kept always-compiled rather than being renamed back and forth. Don't "fix" it.
+What was there and where it went:
 
-`package.json` still declares the sample path as `Samples~/TestScene`. That mismatch is knowingly tolerated — its only effect is that Package Manager's **Import** button for the Test Scene sample won't resolve, which nobody here uses. Everything else (compilation, `Resources.Load` for the bundled font, the Tools menu scene generator) works from `Samples/`.
+- **`MidiFighterTestScene`, `MidiDebugUI`, `CreateMidiTestScene`, `QuitOnEscape`** — deleted. They existed to *assemble* a working scene at runtime, which is now the prefab's job, and to visualize MIDI state, which the status drawer does better.
+- **`MidiToggle` (+ its editor), `MidiRotator`, `MidiMixCloner`, `MidiNoteLogger`** — promoted to `Runtime/` and `Editor/`. They are worked examples of consuming the routers, and cost nothing to ship.
+- **`MidiMixDataVisualizer`** — deleted. It spawned TextMeshPro labels for every mixer control, which is what the drawer already does; keeping it meant retaining `com.unity.ugui` purely for one example. That dependency is now dropped, leaving inputsystem + minis + rtmidi.
 
-**Before publishing to any consumer**, restore the UPM layout:
-1. Rename `Samples/` → `Samples~/`.
-2. Confirm `package.json`'s `samples[0].path` reads `Samples~/TestScene`.
-3. Update the paths in `Third Party Notices.md`, which currently point at `Samples/`.
+**Don't reintroduce a `Samples~/` folder** without deciding first which of those two layouts you want to live with year-round. That tension is what made the old one rot.
 
 ---
 
@@ -126,7 +125,7 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 - **RtMidi cross-platform** — package works on Windows. macOS/Linux paths through RtMidi should work but haven't been hardware-tested.
 - **MIDI Mix bank/shift note remapping** — the mixer sends different notes when Bank Left/Right is active. Currently the router just fires the raw event; a "bank-aware" mode could remap them.
 - ~~Bundled font has no license file.~~ **Resolved.** Cossette Titre is a Google Font under SIL OFL 1.1 (Copyright 2025 The Cossette Project Authors). The upstream `OFL.txt` now sits beside the font in `Runtime/UI/Resources/`, and `Third Party Notices.md` at the package root records it. No Reserved Font Names, so the font may be renamed or modified. Redistribution inside a larger work is expressly permitted; selling the font on its own is not.
-- **"No Theme Style Sheet set to PanelSettings" warning** on every drawer build. Accurate — `BuildView` only assigns `themeStyleSheet` when one is supplied. Harmless here because every element is styled explicitly, but it's console noise. Fix: ship a `.tss` theme asset in the sample's `Resources` and load it alongside the font.
+- **"No Theme Style Sheet set to PanelSettings" warning** on every drawer build. Accurate — `BuildView` only assigns `themeStyleSheet` when one is supplied. Harmless here because every element is styled explicitly, but it's console noise. Fix: ship a `.tss` theme asset in `Runtime/UI/Resources/` and load it alongside the font.
 - **`MixChromeHeight` is the last estimated number in the layout.** `MixSectionHeight` is now derived (`StripHeight` from the widget constants + `MixChromeHeight`), but the chrome — master row, utility row, section padding — depends on label metrics, so the bundled font and type sizes shift it. It only affects how exactly `ScreenFill` is hit; it can never make the pad grid non-square. Correct it from the `mix section h` line of the Log Layout Report.
 - ~~Drawer fields are duplicated on `MidiStatusDrawer` and `MidiSceneBootstrapper`.~~ **Resolved in 2.0.0** by deleting the bootstrapper — see "Why the bootstrapper was removed" above. A new drawer setting now costs one field and one property on the drawer itself.
 
@@ -134,14 +133,14 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 
 ## Assets/ folder note
 
-The consuming Unity project this package lives in (`F:\Unity Projects 2026\midiControllerPackage\`) has `Assets/` as a bare Unity URP template. All package code lives under `Packages/midiFighterForUnity/`. The test scene generated by the menu command lands in `Assets/`.
+The consuming Unity project this package lives in (`F:\Unity Projects 2026\midiControllerPackage\`) has `Assets/` as a bare Unity URP template. All package code lives under `Packages/midiFighterForUnity/`. The dev scene under `Assets/Scenes/` is hand-made: an empty scene with the MIDI Controller prefab dragged in.
 
 ---
 
 ## Files that must stay in sync
 
 - **`CHANGELOG.md`** — bump alongside `package.json` version
-- **`package.json`** — `version`, `description`, sample descriptions
+- **`package.json`** — `version`, `description`, `dependencies`
 - **`README.md`** — outward-facing quick-start (kept minimal; deep docs live in `Documentation~/index.html`)
 - **`Documentation~/index.html`** — the "View documentation" link target in Package Manager
 - **`CLAUDE.md`** — integration guide for Claude Code

@@ -1,7 +1,6 @@
 using UnityEngine;
-using MidiFighter64;
 
-namespace MidiFighter64.Samples
+namespace MidiFighter64
 {
     /// <summary>
     /// Toggles a target GameObject on/off when a configured MF64 button is pressed.

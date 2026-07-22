@@ -1,7 +1,6 @@
 using UnityEngine;
-using MidiFighter64;
 
-namespace MidiFighter64.Samples
+namespace MidiFighter64
 {
     /// <summary>
     /// Attach to any GameObject that has a MeshFilter + MeshRenderer.

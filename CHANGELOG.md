@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.0] — 2026-07-22
+
+### Removed
+- **The `Test Scene` sample, and samples entirely.** `package.json` no longer declares a `samples` block. Nothing reachable was lost: the declared path was `Samples~/TestScene` while the folder on disk was `Samples/`, so Package Manager's **Import** button never resolved and no consumer could reach the sample in the first place. It also ends a standing chore — the folder had to carry the `~` for UPM to offer it and *not* carry it for Unity to compile it during development, so the layout needed renaming around every release and in practice never was.
+- **`MidiFighterTestScene`, `MidiDebugUI`, `CreateMidiTestScene`, `QuitOnEscape`** — deleted. They existed to assemble a working scene at runtime, which is now the prefab's job, and to visualize MIDI state, which `MidiStatusDrawer` does better.
+- **`MidiMixDataVisualizer`** — deleted. It spawned TextMeshPro labels for every mixer control, duplicating what the drawer already shows.
+- **`com.unity.ugui` dependency** — dropped, since nothing in the package uses uGUI or TextMeshPro anymore. Runtime dependencies are now just `com.unity.inputsystem`, `jp.keijiro.minis`, and `jp.keijiro.rtmidi`. The drawer is UI Toolkit, which is an engine module and needs no dependency.
+
+### Changed
+- **`MidiToggle`, `MidiRotator`, `MidiMixCloner` and `MidiNoteLogger` moved into `Runtime/`** (and `MidiToggleEditor` into `Editor/`), with their namespace changing from `MidiFighter64.Samples` to `MidiFighter64`. They are worked examples of consuming the routers and cost nothing to ship, so they are always compiled and always available rather than gated behind an import that never worked.
+- **`MidiToggleEditor` is no longer a global-namespace type.** It was a `public class` with no namespace, which a package should not put into every consumer's global scope; it now sits in `MidiFighter64.Editor` alongside the other inspectors.
+- Docs, `ARCHITECTURE.md` diagram, and the package-structure listing updated throughout: the integration test is "drag in the prefab and press Play", not "import the sample". The diagram also gained a `MidiFighterButtonRouter` node, which it had always been missing.
+
 ## [2.0.0] — 2026-07-22
 
 The whole package now ships as **one prefab**. Drag `Runtime/MIDI Controller.prefab` into a scene and everything works — no bootstrapper, no runtime assembly, no component whose job is configuring other components.
