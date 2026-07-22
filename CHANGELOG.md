@@ -2,6 +2,9 @@
 
 ## [2.1.0] — 2026-07-22
 
+### Added
+- **`UI Opacity` slider on `MidiStatusDrawer`** (0–1, default 1, runtime equivalent `UiOpacity`), sitting below Panel Opacity. It fades everything the drawer draws — pads, knobs, faders, mixer buttons, and all type (captions, bank arrows, the event readout) — where Panel Opacity fades only the backing panels and deliberately leaves that content alone. The two together cover the full range: both at 0 hides the drawer, panels at 0 with widgets at 1 leaves controls floating on the scene. It multiplies with the 40 % dimming applied to controls not yet touched by a MIDI event rather than replacing it, so that cue survives at every setting.
+
 ### Removed
 - **The `Test Scene` sample, and samples entirely.** `package.json` no longer declares a `samples` block. Nothing reachable was lost: the declared path was `Samples~/TestScene` while the folder on disk was `Samples/`, so Package Manager's **Import** button never resolved and no consumer could reach the sample in the first place. It also ends a standing chore — the folder had to carry the `~` for UPM to offer it and *not* carry it for Unity to compile it during development, so the layout needed renaming around every release and in practice never was.
 - **`MidiFighterTestScene`, `MidiDebugUI`, `CreateMidiTestScene`, `QuitOnEscape`** — deleted. They existed to assemble a working scene at runtime, which is now the prefab's job, and to visualize MIDI state, which `MidiStatusDrawer` does better.

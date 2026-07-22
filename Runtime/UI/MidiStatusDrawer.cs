@@ -270,6 +270,13 @@ namespace MidiFighter64
         [Range(0f, 1f)]
         [SerializeField] float _panelOpacity = 0.30f;
 
+        [Tooltip("Opacity of the widgets themselves — pads, knobs, faders, mixer " +
+                 "buttons. The complement to Panel Opacity, which fades only the " +
+                 "backing panels. Multiplies with the dimming applied to controls " +
+                 "that haven't received a MIDI event yet.")]
+        [Range(0f, 1f)]
+        [SerializeField] float _uiOpacity = 1f;
+
         [Tooltip("Multiplier on the line weight of every stroked widget — knob bodies " +
                  "and pad rings. 1 = the design weight. Only thickness changes; the " +
                  "widgets stay the same size and proportions.")]
@@ -293,6 +300,24 @@ namespace MidiFighter64
                 if (Mathf.Approximately(_panelOpacity, v)) return;
                 _panelOpacity = v;
                 ApplyTheme();
+            }
+        }
+
+        /// <summary>Opacity of the widgets themselves, 0–1. The complement to
+        /// <see cref="PanelOpacity"/>: that one fades the backing panels and
+        /// deliberately leaves widget ink alone, so with both at 0 the drawer
+        /// disappears entirely, and with panels at 0 and this at 1 the widgets float
+        /// on the scene. Multiplies with each control's unseen dimming rather than
+        /// replacing it, so "not yet touched" stays distinguishable at any setting.</summary>
+        public float UiOpacity
+        {
+            get => _uiOpacity;
+            set
+            {
+                float v = Mathf.Clamp01(value);
+                if (Mathf.Approximately(_uiOpacity, v)) return;
+                _uiOpacity = v;
+                ApplyUiOpacity();
             }
         }
 
@@ -537,6 +562,7 @@ namespace MidiFighter64
         {
             if (!isActiveAndEnabled) return;
             ApplyTheme();
+            ApplyUiOpacity();
             ApplyPlacement();
         }
 
@@ -677,6 +703,64 @@ namespace MidiFighter64
             }
         }
 
+        /// <summary>
+        /// Repaints widget opacity from stored state. Like <see cref="ApplyTheme"/>
+        /// this deliberately avoids a rebuild, and for the same reason: rebuilding
+        /// would reset each control's "seen" flag and wrongly re-dim everything the
+        /// user had already touched.
+        ///
+        /// Recomputed from <c>_knobsSeen</c> / <c>_fadersSeen</c> / <c>_masterFaderSeen</c>
+        /// rather than read back off the elements, because the stored flags are the
+        /// source of truth — the elements only ever mirror them. That also means the
+        /// build sites need no changes: <see cref="BuildAllViews"/> calls this once at
+        /// the end and every widget lands correctly regardless of what it was built at.
+        /// </summary>
+        void ApplyUiOpacity()
+        {
+            foreach (var v in _views)
+            {
+                if (v.root == null) continue;
+
+                // Pads have no seen state — a pad is either lit by hardware or not,
+                // and the LED colour already carries that.
+                foreach (var pad in v.pads) if (pad != null) pad.style.opacity = _uiOpacity;
+                foreach (var pad in v.mutes)   if (pad != null) pad.style.opacity = _uiOpacity;
+                foreach (var pad in v.recArms) if (pad != null) pad.style.opacity = _uiOpacity;
+                if (v.soloModifier != null) v.soloModifier.style.opacity = _uiOpacity;
+                if (v.bankLeft     != null) v.bankLeft.style.opacity     = _uiOpacity;
+                if (v.bankRight    != null) v.bankRight.style.opacity    = _uiOpacity;
+
+                for (int ch = 0; ch < 8; ch++)
+                    for (int r = 0; r < 3; r++)
+                        if (v.knobs[ch, r] != null)
+                            v.knobs[ch, r].style.opacity = SeenScale(_knobsSeen[ch, r]);
+
+                for (int ch = 0; ch < 8; ch++)
+                    if (v.faderTracks[ch] != null)
+                        v.faderTracks[ch].style.opacity = SeenScale(_fadersSeen[ch]);
+
+                if (v.masterFaderTrack != null)
+                    v.masterFaderTrack.style.opacity = SeenScale(_masterFaderSeen);
+
+                // Type is part of the readout, not the panel — captions ("MASTER",
+                // "SOLO"), the bank arrows, and the event strip all fade with the
+                // widgets, so both sliders at 0 leaves nothing on screen. Found by
+                // class rather than held on the view, the same way ApplyTheme finds
+                // them; every label goes through MakeLabel so the classes are
+                // exhaustive. Note the message strip carries its own background, so
+                // that panel responds to this slider as well as to Panel Opacity.
+                v.root.Query<Label>(className: LabelClass)
+                      .ForEach(l => l.style.opacity = _uiOpacity);
+                v.root.Query<Label>(className: MessageClass)
+                      .ForEach(l => l.style.opacity = _uiOpacity);
+            }
+        }
+
+        /// <summary>A control's opacity: its unseen dimming scaled by the global
+        /// widget opacity. Multiplied, not replaced, so the not-yet-touched cue
+        /// survives at every setting.</summary>
+        float SeenScale(bool seen) => (seen ? SeenOpacity : UnseenOpacity) * _uiOpacity;
+
         // ─── View lifecycle ──────────────────────────────────────────────
         void BuildAllViews()
         {
@@ -695,6 +779,7 @@ namespace MidiFighter64
             // One pass over the finished tree, so anything the build sites didn't
             // theme explicitly (KnobDisplay ink, for one) still lands correctly.
             ApplyTheme();
+            ApplyUiOpacity();
         }
 
         /// <summary>Dumps resolved geometry so layout can be verified from the
@@ -967,7 +1052,7 @@ namespace MidiFighter64
                     knob.style.width = KNOB_SIZE;
                     knob.style.height = KNOB_SIZE;
                     knob.style.marginBottom = KnobGap;
-                    knob.style.opacity = _knobsSeen[ch, rowIdx] ? SeenOpacity : UnseenOpacity;
+                    knob.style.opacity = SeenScale(_knobsSeen[ch, rowIdx]);
                     view.knobs[ch, rowIdx] = knob;
                     strip.Add(knob);
                 }
@@ -1011,7 +1096,7 @@ namespace MidiFighter64
             masterTrack.style.borderTopRightRadius = 3;
             masterTrack.style.borderBottomLeftRadius = 3;
             masterTrack.style.borderBottomRightRadius = 3;
-            masterTrack.style.opacity = _masterFaderSeen ? SeenOpacity : UnseenOpacity;
+            masterTrack.style.opacity = SeenScale(_masterFaderSeen);
             masterTrack.style.overflow = Overflow.Hidden;
 
             view.masterFaderBar = new VisualElement();
@@ -1075,7 +1160,7 @@ namespace MidiFighter64
             col.style.borderBottomLeftRadius = 3;
             col.style.borderBottomRightRadius = 3;
             col.style.justifyContent = Justify.FlexEnd;
-            col.style.opacity = seen ? SeenOpacity : UnseenOpacity;
+            col.style.opacity = SeenScale(seen);
 
             bar = new VisualElement();
             bar.style.height = 0;
@@ -1384,7 +1469,7 @@ namespace MidiFighter64
                 var k = v.knobs[ch, r];
                 if (k == null) continue;
                 k.Value = value;
-                if (!wasSeen) k.style.opacity = SeenOpacity;
+                if (!wasSeen) k.style.opacity = SeenScale(true);
             }
             SetMessage($"Mix Knob R{row} Ch{channel}  {value:0.00}");
         }
@@ -1400,7 +1485,7 @@ namespace MidiFighter64
                 var bar = v.faderBars[ch];
                 if (bar == null) continue;
                 bar.style.height = new Length(Mathf.Clamp01(value) * 100f, LengthUnit.Percent);
-                if (!wasSeen && v.faderTracks[ch] != null) v.faderTracks[ch].style.opacity = SeenOpacity;
+                if (!wasSeen && v.faderTracks[ch] != null) v.faderTracks[ch].style.opacity = SeenScale(true);
             }
             SetMessage($"Mix Fader Ch{channel}  {value:0.00}");
         }
@@ -1413,7 +1498,7 @@ namespace MidiFighter64
             {
                 if (v.masterFaderBar == null) continue;
                 v.masterFaderBar.style.width = new Length(Mathf.Clamp01(value) * 100f, LengthUnit.Percent);
-                if (!wasSeen && v.masterFaderTrack != null) v.masterFaderTrack.style.opacity = SeenOpacity;
+                if (!wasSeen && v.masterFaderTrack != null) v.masterFaderTrack.style.opacity = SeenScale(true);
             }
             SetMessage($"Mix Master  {value:0.00}");
         }
