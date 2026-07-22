@@ -33,6 +33,11 @@ namespace MidiFighter64.Samples
         static readonly Color COLOR_IDLE = new Color(0.12f, 0.12f, 0.14f);
         static readonly Color COLOR_WAVE = new Color(1.00f, 0.75f, 0.10f);
 
+        [Tooltip("Fallback MIDI Controller prefab, instantiated at Awake only if the " +
+                 "scene has no rig yet. Normally the prefab is already in the scene " +
+                 "and this can be left empty.")]
+        [SerializeField] GameObject _controllerPrefab;
+
         // ------------------------------------------------------------------ //
         // State
         // ------------------------------------------------------------------ //
@@ -82,9 +87,21 @@ namespace MidiFighter64.Samples
 
         void EnsureCoreComponents()
         {
-            MidiSceneBootstrapper.EnsureCoreComponents(transform);
+            // The rig normally comes from the MIDI Controller prefab already sitting
+            // in the scene — that is the documented setup, and what the scene
+            // generator produces. The fallback below only covers dropping this script
+            // into an empty scene by hand.
+            if (Object.FindFirstObjectByType<MidiEventManager>() == null && _controllerPrefab != null)
+                Instantiate(_controllerPrefab);
+
             _router = Object.FindFirstObjectByType<MidiFighterButtonRouter>();
             _output = Object.FindFirstObjectByType<MidiFighterOutput>();
+
+            if (_router == null)
+                Debug.LogWarning(
+                    "[MidiFighter64] No MIDI rig in the scene. Drag " +
+                    "Packages/com.caseyfarina.midifighter64/Runtime/MIDI Controller.prefab " +
+                    "into the scene, or assign it to this component's Controller Prefab field.");
         }
 
         void BuildScene()

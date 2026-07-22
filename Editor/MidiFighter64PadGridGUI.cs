@@ -7,7 +7,7 @@ namespace MidiFighter64.Editor
     /// Shared IMGUI helper that draws the MF64's 8×8 pad grid with a mode
     /// checkbox, LED-colour dropdown, and hardware note number per cell.
     /// Used by both <see cref="MidiFighter64ButtonConfigEditor"/> (SO asset)
-    /// and <c>MidiSceneBootstrapperEditor</c> (inline arrays on a MonoBehaviour).
+    /// and <see cref="MidiFighterButtonRouterEditor"/> (inline arrays on a MonoBehaviour).
     /// </summary>
     public static class MidiFighter64PadGridGUI
     {

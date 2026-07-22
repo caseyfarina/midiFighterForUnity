@@ -531,9 +531,8 @@ namespace MidiFighter64
         // Restyle-only settings, so they can be dialed in live from this
         // component's Inspector during play mode. Deliberately does NOT touch
         // anything that rebuilds: a rebuild destroys and creates GameObjects,
-        // which is illegal from OnValidate — the same reason MidiSceneBootstrapper
-        // doesn't push drawer config from its own OnValidate. With no views built
-        // yet (edit mode, or before OnEnable) both calls are no-ops.
+        // which is illegal from OnValidate and a route to editor deadlock. With no
+        // views built yet (edit mode, or before OnEnable) both calls are no-ops.
         void OnValidate()
         {
             if (!isActiveAndEnabled) return;
@@ -543,9 +542,12 @@ namespace MidiFighter64
 
         void OnEnable()
         {
-            BuildAllViews();
-
+            // Must precede BuildAllViews: BuildMf64Section reads _btnRouter.Config to
+            // decide each pad's Button/Toggle mode, so finding the router afterwards
+            // built every cell as Button no matter how the grid was configured.
             _btnRouter = Object.FindFirstObjectByType<MidiFighterButtonRouter>();
+
+            BuildAllViews();
 
             // Subscribe MF64
             MidiFighterButtonRouter.OnToggle         += HandleToggle;

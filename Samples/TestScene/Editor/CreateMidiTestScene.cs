@@ -15,6 +15,9 @@ namespace MidiFighter64.Samples.Editor
     {
         const string DEFAULT_PATH = "Assets/MidiControllersTestScene.unity";
 
+        const string ControllerPrefabPath =
+            "Packages/com.caseyfarina.midifighter64/Runtime/MIDI Controller.prefab";
+
         [MenuItem("Tools/MidiFighter64/Create Test Scene", priority = 100)]
         public static void Create()
         {
@@ -29,6 +32,16 @@ namespace MidiFighter64.Samples.Editor
             var go = new GameObject("MidiTestScene");
             go.AddComponent<MidiFighterTestScene>();
             go.AddComponent<MidiDebugUI>();
+
+            // The whole rig comes from one prefab now. InstantiatePrefab (not
+            // Instantiate) keeps the instance linked to the asset, so later package
+            // updates to the prefab still reach scenes generated today.
+            var rig = AssetDatabase.LoadAssetAtPath<GameObject>(ControllerPrefabPath);
+            if (rig != null)
+                PrefabUtility.InstantiatePrefab(rig, scene);
+            else
+                Debug.LogWarning($"[MidiFighter64] Could not find {ControllerPrefabPath}. " +
+                                 "The generated scene will have no MIDI rig — drag the prefab in manually.");
 
             SceneManager.SetActiveScene(scene);
 
