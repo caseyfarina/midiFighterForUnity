@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace MidiFighter64.Samples
+namespace MidiFighter64
 {
     /// <summary>
     /// Read-only value display shaped like a hardware synth knob: a ring of

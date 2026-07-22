@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace MidiFighter64.Samples
+namespace MidiFighter64
 {
     /// <summary>
     /// Universal button/toggle indicator: empty stroked circle (same line weight

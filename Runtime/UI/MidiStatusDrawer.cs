@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 
-namespace MidiFighter64.Samples
+namespace MidiFighter64
 {
     /// <summary>Where <see cref="MidiStatusDrawer"/> anchors on the display.
     /// Vertically centered in both modes, at any aspect ratio.</summary>
