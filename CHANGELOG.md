@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.2.0] — 2026-07-22
+
+### Added
+- **Radial 1 drawer layout.** `MidiStatusDrawer.Layout` selects between `Linear1` (the existing pad-grid-over-strips arrangement) and `Radial1`, which arranges everything as concentric rings from the centre out: the 64 MF64 pads as four rings, three knob arcs and a fader arc per channel inside each channel's 45° slice, a full-circumference master ring, and an outer ring of Mute / Rec-Arm pairs. Channel 1 sits at the top and channels advance clockwise. **F4** cycles layouts at runtime. Geometry is measured from `radial_A_centered.svg`; the palette is unchanged, since band separation is carried by radius and stroke weight rather than hue.
+- **`RadialArc`** — a Painter2D element drawing a faint full-sweep track with a value fill growing along it. One primitive covers every continuous mixer control in radial: knob rows, channel faders, and the master ring differ only in radius, sweep and stroke.
+- **`Pad Size` and `Ring Spread` sliders** *(radial only)* — pad diameter as a multiple of the reference layout, and a multiplier on the ring radii. They compete for the same space: tightening the rings also shortens each ring's circumference, and ring 0 crowds first because its 28 pads get the least arc each.
+- **`Vertical Offset` and `Readout Padding` sliders** *(radial only)* — move the ring stack within the display, and inset the event readout from the display's bottom-left corner.
+- **`MidiStatusDrawerEditor`** — groups the drawer's settings and separates the layout-specific ones. Groups that don't apply are shown disabled rather than hidden, since hiding makes settings look like they've been lost when the layout changes.
+
+### Changed
+- **The event readout floats at the display's bottom-left in radial layouts** rather than flowing beneath the widgets, and no longer contributes to the height budget. A disc leaves its corners empty, and a full-width strip underneath was also pushing the rings upward. It attaches to the root rather than the drawer, so `ApplyHiddenState` hides it explicitly — the drawer's slide doesn't reach it.
+- **Radial channel captions read `1`–`8`** rather than `ch1`–`ch8`.
+- The three MIDI Mix handlers now guard the linear widget and the radial arc **independently**. They previously did `if (widget == null) continue`, which in a radial layout — where the linear widget is null by design — would have skipped the arc update entirely and left the arcs frozen.
+
 ## [2.1.0] — 2026-07-22
 
 ### Added

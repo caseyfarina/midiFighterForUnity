@@ -2,7 +2,14 @@
 
 **Goal:** add two selectable *radial* layouts to the existing `MidiStatusDrawer`, alongside the current linear one. All three mirror the same live MIDI state; only the geometry changes.
 
-**Status:** planning. Design settled for Radial 1 (a reference render exists — see below). A handful of Radial 2 decisions in "Open decisions" must be confirmed before coding.
+**Status: Radial 1 SHIPPED in 2.2.0.** Radial 2 remains unbuilt — its five open decisions are still open, and `DrawerLayout.Radial2` falls back to Linear 1.
+
+Two things came out differently from this plan during implementation, both worth knowing before Radial 2:
+
+1. **The event readout floats at the display's bottom-left**, not stacked under the square as planned. A disc leaves its corners empty and a full-width strip underneath pushed the rings upward. It attaches to the root rather than the drawer, so it contributes nothing to `DrawerHeight` and `ApplyHiddenState` must hide it explicitly.
+2. **The handlers needed more than "one additive line."** They did `if (widget == null) continue`, so in a radial layout — where the linear widget is null by design — the appended arc update would never have run. Each handler now guards the two independently. Radial 2 will inherit this correctly; don't re-add a `continue`.
+
+Also added beyond the plan: `Pad Size`, `Ring Spread`, `Vertical Offset` and `Readout Padding` sliders, and a grouped custom inspector separating linear-only from radial-only settings.
 
 **Repo:** `caseyfarina/midiFighterForUnity` · **Files:** `Runtime/UI/`
 

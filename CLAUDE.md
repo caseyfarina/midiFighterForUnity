@@ -183,8 +183,26 @@ if (MidiMixRouter.IsSoloHeld) { ... }
 - **Backtick** (`` ` ``) or **F1** — show/hide the drawer.
 - **F2** — cycle `DrawerPlacement` (Right Centered ⇄ Screen Centered).
 - **F3** — cycle `DrawerTheme` (Dark ⇄ Light).
+- **F4** — cycle `DrawerLayout` (Linear 1 ⇄ Radial 1).
 
 The **F-keys only** are gated by `EnableFunctionKeys` (**Enable Function Keys** on the drawer), on by default. Untick it when the project binds F1–F3 itself. **Backtick is never gated** — it's the show/hide key, and a hidden drawer with no way back is a dead end. F1 is an alias for backtick, so it *is* gated. Every shortcut also has a scripting equivalent.
+
+**Layout modes** — `MidiStatusDrawer.Layout`, or F4.
+
+- **Linear 1** (default) — the 8×8 pad grid above eight vertical mixer strips.
+- **Radial 1** — concentric rings, centre outward: the 64 pads as four rings, then three knob arcs and a fader arc per channel inside each channel's 45° slice, a full-circumference master ring, and an outer ring of Mute / Rec-Arm pairs. Channel 1 is at the top, channels advance clockwise.
+- **Radial 2** — reserved for the sunburst layout; not built yet, falls back to Linear 1.
+
+All layouts mirror the same live MIDI state. A radial builder populates the *same* `DrawerView` arrays with the same `PadCell` instances, just positioned differently, which is why every event handler works unchanged across layouts. Mixer values additionally drive `RadialArc` widgets stored in `knobArcs` / `faderArcs` / `masterArc`; each handler updates the linear widget and the arc behind **independent** null checks, since each layout populates one and leaves the other null.
+
+`DrawerLayout.Linear1` must stay enum value 0 — a serialized field added later deserializes to zero on existing scenes and prefab instances, so zero has to be the safe default rather than a layout nobody chose.
+
+Things that are deliberately different in radial:
+
+- **Solo modifier and Bank L/R are not built.** Those `DrawerView` fields stay null; the handlers already null-check.
+- **Fisheye does nothing.** It scales `mf64Rows` via flex-grow and no radial builder populates those, so `FocusMf64Pad` returns early.
+- **The event readout floats** at the display's bottom-left rather than flowing under the square, and so contributes nothing to `DrawerHeight`. It lives on the *root*, not the drawer, which is why `ApplyHiddenState` has to hide it explicitly — the drawer's slide doesn't cover it.
+- **Section visibility keeps radii fixed.** Hiding the mixer leaves the pad rings where they are rather than re-flowing the stack, which would need a second radius table per combination.
 
 **Inspector controls** (on the `MidiStatusDrawer` component)
 - **Placement** — `Right Centered` (pinned right, centered vertically) or `Screen Centered` (centered both axes). Runtime equivalent: `MidiStatusDrawer.Instance.Placement`. Restyles the root container; no rebuild.
@@ -197,6 +215,9 @@ The **F-keys only** are gated by `EnableFunctionKeys` (**Enable Function Keys** 
 - **Stroke Weight** — global line-weight multiplier for stroked widgets (knob bodies, pad rings), 0.25–4 (default 1). Runtime equivalent: `StrokeWeight`. It multiplies the single `KnobDisplay.StrokeWidth` base that both custom elements share, through their `StrokeScale` property. Radii are all fractions of each element's own size, so thickness is the *only* thing that changes — widget sizes, the pad grid's square, and `MixSectionHeight` are all untouched. Any new stroked drawing must go through `StrokeWidth * StrokeScale` or it won't follow the slider.
 - **Panel Opacity** — alpha of the section panels and message strip, 0–1 (default 0.30). Runtime equivalent: `PanelOpacity`. Widget ink is never faded by this, so the readout stays legible even at 0 (widgets floating on the scene with no panel).
 - **UI Opacity** — opacity of everything the drawer draws: pads, knobs, faders, mixer buttons, and all type (captions, bank arrows, the event strip), 0–1 (default 1). Runtime equivalent: `UiOpacity`. The complement to Panel Opacity: that fades the backing panels and leaves the ink alone, this fades the ink and leaves the panels alone. Both at 0 and the drawer is invisible; panels at 0 with this at 1 gives widgets floating on the scene. It **multiplies** with the 40 % dimming applied to controls that haven't received a MIDI event yet, rather than replacing it, so "not yet touched" stays readable at any setting. Applied by `ApplyUiOpacity`, which recomputes from the stored `_knobsSeen` / `_fadersSeen` / `_masterFaderSeen` flags — those are the source of truth and the elements only mirror them. Like `ApplyTheme` it restyles in place and never rebuilds, because a rebuild would reset the seen flags and wrongly re-dim everything already touched. **Any new widget opacity must go through `SeenScale()`** or it won't follow the slider.
+- **Pad Size** / **Ring Spread** *(Radial only)* — pad diameter as a multiple of the reference layout, and a multiplier on the four ring radii. They compete for the same space: lowering Ring Spread tightens the cluster but also shortens each ring's circumference, so pads crowd sooner as Pad Size rises. **Ring 0 binds first** — its 28 pads get the least arc each despite sitting on the longest ring. Runtime equivalents: `RadialPadScale` / `RadialRingSpread`.
+- **Vertical Offset** *(Radial only)* — moves the ring stack up or down within the display, ±1 being half a square. Runtime equivalent: `RadialVerticalOffset`. Applied as a transform on the *section*, deliberately not the drawer: the drawer's own `translate` is owned by the show/hide slide, and a margin would feed back into the size budget.
+- **Readout Padding** *(Radial only)* — inset of the floating event readout from the display's bottom-left corner. Runtime equivalent: `RadialMessagePadding`.
 - **Screen Fill** — fraction of the display the drawer occupies on whichever axis binds first: height on a landscape display, width on a portrait one. Never crops. Runtime equivalent: `ScreenFraction`.
 - **Log Layout Report** — diagnostic, off by default. Dumps one resolved-geometry report to the console ~400 ms after the drawer is first *shown* (press `` ` ``; a hidden drawer is `display:none` and measures `NaN`). Reports screen size, derived reference resolution, drawer/grid/cell sizes, screen coverage, mixer-vs-grid column widths, and the measured mix section height. Use it instead of eyeballing: the grid and cell lines must be square, one coverage axis must equal Screen Fill, and `mix section h` is how you correct `MixChromeHeight`. Reads `resolvedStyle` only, never writes — that distinction is what keeps it from feeding back into layout.
 
@@ -310,12 +331,14 @@ Runtime/                        (always compiled, autoRef'd)
   UI/
     MidiStatusDrawer            — live on-screen overlay (UI Toolkit)
     PadCell / KnobDisplay       — Painter2D custom VisualElements
+    RadialArc                   — Painter2D arc: track + value fill
     Resources/                  — bundled font + its OFL license
 
 Editor/                         (Editor-only)
   MidiFighter64ButtonConfigEditor — 8×8 grid inspector (SO asset)
   MidiFighterButtonRouterEditor   — 8×8 grid inspector (inline arrays)
   MidiFighter64PadGridGUI         — shared grid drawing, used by both
+  MidiStatusDrawerEditor          — grouped drawer inspector (linear vs radial)
   MidiToggleEditor                — inspector for the MidiToggle example
   CreateMidiControllerPrefab      — Tools menu → regenerate the prefab
 

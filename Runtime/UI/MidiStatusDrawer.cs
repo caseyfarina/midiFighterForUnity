@@ -27,6 +27,24 @@ namespace MidiFighter64
         Light,
     }
 
+    /// <summary>How <see cref="MidiStatusDrawer"/> arranges its widgets. All layouts
+    /// mirror the same live MIDI state; only the geometry differs.</summary>
+    public enum DrawerLayout
+    {
+        /// <summary>The shipping layout: an 8×8 flex pad grid above eight vertical
+        /// mixer strips. Must stay value 0 — a serialized field added later
+        /// deserializes to zero on existing scenes and prefab instances, so zero
+        /// has to be the safe default rather than a layout nobody chose.</summary>
+        Linear1 = 0,
+        /// <summary>Concentric rings, centre outward: MF64 pads as four rings, then
+        /// knob / fader arcs per channel, a full-circumference master ring, and a
+        /// mute / rec-arm toggle ring.</summary>
+        Radial1 = 1,
+        /// <summary>Reserved — the sunburst layout, not built yet. Falls back to
+        /// <see cref="Linear1"/>.</summary>
+        Radial2 = 2,
+    }
+
     /// <summary>
     /// Screen-space overlay showing live state of both MIDI controllers
     /// (Midi Fighter 64 + Akai MIDI Mix). Toggled with backtick or F1.
@@ -143,6 +161,15 @@ namespace MidiFighter64
             public PadCell            bankLeft;
             public PadCell            bankRight;
             public Label              messageLabel;
+
+            // Radial layouts only; null in Linear1. The knob/fader/master widgets
+            // above stay untouched so the linear layout is unaffected, and every
+            // handler updates both sets behind a null check.
+            public RadialArc[,]       knobArcs   = new RadialArc[8, 3];
+            public RadialArc[]        faderArcs  = new RadialArc[8];
+            public RadialArc          masterArc;
+            public VisualElement      radialSection;    // vertical-offset target
+            public VisualElement      floatingMessage;  // absolute, on root not drawer
         }
 
         readonly List<DrawerView> _views = new();
@@ -188,6 +215,133 @@ namespace MidiFighter64
         {
             get => _enableFunctionKeys;
             set => _enableFunctionKeys = value;
+        }
+
+        [Tooltip("Widget arrangement. Linear 1 is the pad grid over mixer strips; " +
+                 "Radial 1 is concentric rings, centre outward. Cycled at runtime with F4.")]
+        [SerializeField] DrawerLayout _layout = DrawerLayout.Linear1;
+
+        /// <summary>Which geometry the drawer builds. Rebuilds on change, because
+        /// the arrangement is baked into the UI tree — unlike theme or opacity,
+        /// there is nothing to restyle in place.</summary>
+        public DrawerLayout Layout
+        {
+            get => _layout;
+            set
+            {
+                if (_layout == value) return;
+                _layout = value;
+                // Fisheye focus is flex-grow based and meaningless off Linear1;
+                // clear it so a stale focus can't be re-applied after the switch.
+                ClearMf64Focus();
+                RebuildIfLive();
+            }
+        }
+
+        [Tooltip("Radial only. Diameter of the MF64 pads, as a multiple of the " +
+                 "reference layout. Ring 0 (the outer 28) runs out of room first — " +
+                 "past about 1.9 at full spread its pads start to touch.")]
+        [Range(0.5f, 2f)]
+        [SerializeField] float _radialPadScale = 1.5f;
+
+        [Tooltip("Radial only. Multiplies the four pad ring radii, pulling the grid " +
+                 "in toward the centre or pushing it out. Lower values tighten the " +
+                 "cluster but also shorten each ring's circumference, so pads crowd " +
+                 "sooner as Pad Size rises.")]
+        [Range(0.5f, 1.25f)]
+        [SerializeField] float _radialRingSpread = 0.85f;
+
+        [Tooltip("Radial only. Moves the ring stack up or down within the display. " +
+                 "-1 is half a square up, +1 half a square down, 0 centred.")]
+        [Range(-1f, 1f)]
+        [SerializeField] float _radialVerticalOffset = 0f;
+
+        [Tooltip("Radial only. Distance of the MIDI event readout from the bottom-left " +
+                 "corner of the display, in design units.")]
+        [Range(0f, 200f)]
+        [SerializeField] float _radialMessagePadding = 24f;
+
+        /// <summary>Radial only. Shifts the ring stack vertically within the display,
+        /// -1 to +1, in units of half the radial square. Applied as a transform rather
+        /// than a margin so it never feeds back into the size budget, and applied to
+        /// the section rather than the drawer because the drawer's own translate is
+        /// already owned by the show/hide slide.</summary>
+        public float RadialVerticalOffset
+        {
+            get => _radialVerticalOffset;
+            set
+            {
+                float v = Mathf.Clamp(value, -1f, 1f);
+                if (Mathf.Approximately(_radialVerticalOffset, v)) return;
+                _radialVerticalOffset = v;
+                ApplyRadialTweaks();
+            }
+        }
+
+        /// <summary>Radial only. Pad diameter as a multiple of the reference layout's,
+        /// which is 1. The measured per-ring proportions are preserved — this scales
+        /// all four together rather than flattening them.</summary>
+        public float RadialPadScale
+        {
+            get => _radialPadScale;
+            set
+            {
+                float v = Mathf.Clamp(value, 0.5f, 2f);
+                if (Mathf.Approximately(_radialPadScale, v)) return;
+                _radialPadScale = v;
+                ApplyRadialTweaks();
+            }
+        }
+
+        /// <summary>Radial only. Multiplier on the four pad ring radii. Below 1 the
+        /// grid tightens toward the centre, which also shortens each ring's
+        /// circumference — so this and <see cref="RadialPadScale"/> compete for the
+        /// same arc, and pads touch sooner when both move together.</summary>
+        public float RadialRingSpread
+        {
+            get => _radialRingSpread;
+            set
+            {
+                float v = Mathf.Clamp(value, 0.5f, 1.25f);
+                if (Mathf.Approximately(_radialRingSpread, v)) return;
+                _radialRingSpread = v;
+                ApplyRadialTweaks();
+            }
+        }
+
+        /// <summary>Radial only. Inset of the floating event readout from the display's
+        /// bottom-left corner, in design units.</summary>
+        public float RadialMessagePadding
+        {
+            get => _radialMessagePadding;
+            set
+            {
+                float v = Mathf.Clamp(value, 0f, 200f);
+                if (Mathf.Approximately(_radialMessagePadding, v)) return;
+                _radialMessagePadding = v;
+                ApplyRadialTweaks();
+            }
+        }
+
+        /// <summary>Pushes the two radial-only placement settings to live elements.
+        /// Like <see cref="ApplyTheme"/> this restyles in place and never rebuilds, so
+        /// both sliders are live in play mode and no "seen" state is lost.</summary>
+        void ApplyRadialTweaks()
+        {
+            foreach (var v in _views)
+            {
+                if (v.radialSection != null)
+                    v.radialSection.style.translate =
+                        new Translate(0, _radialVerticalOffset * RadialSideDesign * 0.5f);
+
+                if (v.floatingMessage != null)
+                {
+                    v.floatingMessage.style.left   = _radialMessagePadding;
+                    v.floatingMessage.style.bottom = _radialMessagePadding;
+                }
+
+                PlaceRadialPads(v);
+            }
         }
 
         [Tooltip("Where the drawer sits on the display. Vertically centered either way.")]
@@ -479,14 +633,36 @@ namespace MidiFighter64
         /// and for the same reason: a text line plus its padding.</summary>
         const float MessageSectionHeight = (2f * SectionPad) + (MessageFontSize * 1.2f) + 8f;
 
+        /// <summary>Side of the radial layouts' square, in design units. Like
+        /// <see cref="GridSideDesign"/> this is an authoring unit only — every radius
+        /// below is a fraction of half this, so changing it rescales the whole layout
+        /// together and changes nothing on screen. 920 matches the reference SVG's
+        /// viewBox, which keeps the measured fractions directly comparable.
+        ///
+        /// It is a constant and must stay one. Measuring the container and writing a
+        /// size back is the pattern that hard-freezes the editor — see DEVNOTES.</summary>
+        const float RadialSideDesign = 920f;
+
+        /// <summary>Content height of a radial layout's section: its own padding plus
+        /// the square.</summary>
+        const float RadialSectionHeight = (2f * SectionPad) + RadialSideDesign;
+
+        /// <summary>True when the active layout draws a radial square rather than the
+        /// linear grid-over-strips stack. Radial2 is not built yet and falls back to
+        /// Linear1, so it deliberately does not count as radial.</summary>
+        bool IsRadial => _layout == DrawerLayout.Radial1;
+
         /// <summary>Side of the 8×8 pad square, in design units.</summary>
         float GridSide => GridSideDesign;
 
         /// <summary>Follows from the square: the grid plus everything beside it.
-        /// Unconditional on purpose — the mix section is deliberately built to the
-        /// same content width so the two sections' 8 columns line up, so it wants
-        /// the grid's width even when the grid isn't shown.</summary>
-        float DrawerWidth => GridSide + (2f * SectionPad) + (2f * DrawerPadX);
+        /// Unconditional within Linear1 on purpose — the mix section is deliberately
+        /// built to the same content width so the two sections' 8 columns line up, so
+        /// it wants the grid's width even when the grid isn't shown. That reasoning is
+        /// linear-only: a radial layout has exactly one square and no columns to
+        /// align, so both of its axes come from the same constant.</summary>
+        float DrawerWidth => (IsRadial ? RadialSideDesign : GridSide)
+                           + (2f * SectionPad) + (2f * DrawerPadX);
 
         /// <summary>
         /// Full drawer height in design units, summing exactly what <c>BuildView</c>
@@ -507,6 +683,14 @@ namespace MidiFighter64
             get
             {
                 float h = 2f * DrawerPadY;
+
+                // Radial draws one square plus the message strip, which always gets
+                // its own panel there because the strip's usual home is the mix
+                // section's utility row and no radial layout builds one.
+                // Radial's readout floats at the display's bottom-left, outside the
+                // flow, so it contributes nothing to the budget. Only the square does.
+                if (IsRadial) return h + RadialSectionHeight;
+
                 // The gap is the MF64 section's own marginBottom, and a section
                 // always follows it — so it belongs to the MF64 term, not between.
                 if (_showMf64) h += Mf64SectionHeight + Mf64SectionGap;
@@ -563,6 +747,7 @@ namespace MidiFighter64
             if (!isActiveAndEnabled) return;
             ApplyTheme();
             ApplyUiOpacity();
+            ApplyRadialTweaks();
             ApplyPlacement();
         }
 
@@ -633,6 +818,9 @@ namespace MidiFighter64
                     : DrawerPlacement.RightCentered;
             if (kb.f3Key.wasPressedThisFrame)
                 Theme = _theme == DrawerTheme.Dark ? DrawerTheme.Light : DrawerTheme.Dark;
+            // Radial2 is not built yet, so F4 cycles only the two live layouts.
+            if (kb.f4Key.wasPressedThisFrame)
+                Layout = _layout == DrawerLayout.Linear1 ? DrawerLayout.Radial1 : DrawerLayout.Linear1;
         }
 
         // The drawer is vertically centered in both modes; only the horizontal
@@ -682,6 +870,13 @@ namespace MidiFighter64
                 {
                     c.StrokeColor = p.PadStroke;
                     c.StrokeScale = _strokeWeight;
+                });
+                // Type query rather than a walk over the arc arrays, matching the two
+                // above — it then covers any arc added later for free.
+                v.root.Query<RadialArc>().ForEach(a =>
+                {
+                    a.SetInk(p.Ink, p.Track);
+                    a.StrokeScale = _strokeWeight;
                 });
 
                 foreach (var bar in v.faderBars)     if (bar   != null) bar.style.backgroundColor   = p.Ink;
@@ -741,6 +936,21 @@ namespace MidiFighter64
 
                 if (v.masterFaderTrack != null)
                     v.masterFaderTrack.style.opacity = SeenScale(_masterFaderSeen);
+
+                // Radial arcs mirror the same controls, so they take the same seen
+                // state — otherwise they would sit permanently at full brightness
+                // while the linear widgets dimmed.
+                for (int ch = 0; ch < 8; ch++)
+                    for (int r = 0; r < 3; r++)
+                        if (v.knobArcs[ch, r] != null)
+                            v.knobArcs[ch, r].style.opacity = SeenScale(_knobsSeen[ch, r]);
+
+                for (int ch = 0; ch < 8; ch++)
+                    if (v.faderArcs[ch] != null)
+                        v.faderArcs[ch].style.opacity = SeenScale(_fadersSeen[ch]);
+
+                if (v.masterArc != null)
+                    v.masterArc.style.opacity = SeenScale(_masterFaderSeen);
 
                 // Type is part of the readout, not the panel — captions ("MASTER",
                 // "SOLO"), the bank arrows, and the event strip all fade with the
@@ -943,18 +1153,271 @@ namespace MidiFighter64
             body.style.flexGrow = 1;
             drawer.Add(body);
 
-            if (_showMf64)    body.Add(BuildMf64Section(view));   // top
-            if (_showMidiMix) body.Add(BuildMixSection(view));    // bottom
-
-            // The message strip normally lives in the MIDI Mix utility row. With
-            // that section hidden it would vanish, so give it its own panel.
-            if (!_showMidiMix)
+            if (IsRadial)
             {
+                body.Add(BuildRadial1Section(view));
+            }
+            else
+            {
+                if (_showMf64)    body.Add(BuildMf64Section(view));   // top
+                if (_showMidiMix) body.Add(BuildMixSection(view));    // bottom
+            }
+
+            if (IsRadial)
+            {
+                // Pinned to the display's bottom-left rather than stacked under the
+                // square: the radial layout is a disc, so flowing a full-width strip
+                // beneath it wastes the corners and drags the square upward. On the
+                // root, not the drawer, so it is positioned against the display —
+                // which is why ApplyHiddenState has to hide it explicitly.
+                var holder = new VisualElement { name = "radial-message" };
+                holder.style.position = Position.Absolute;
+                holder.style.left   = _radialMessagePadding;
+                holder.style.bottom = _radialMessagePadding;
+                holder.pickingMode = PickingMode.Ignore;
+
+                view.messageLabel = MakeMessageLabel();
+                holder.Add(view.messageLabel);
+                view.floatingMessage = holder;
+                root.Add(holder);
+            }
+            else if (!_showMidiMix)
+            {
+                // The strip normally lives in the MIDI Mix utility row; with that
+                // section hidden it would vanish, so give it its own panel.
                 var msgSection = MakeSection("Message");
                 view.messageLabel = MakeMessageLabel();
                 msgSection.Add(view.messageLabel);
                 body.Add(msgSection);
             }
+        }
+
+        // ─── Radial 1 geometry ───────────────────────────────────────────
+        // Every radius and size is a fraction of the square's half-side, measured
+        // from radial_A_centered.svg. They are the tuning surface for the layout —
+        // the SVG is authoritative for geometry only, never for colour.
+
+        /// <summary>Pad ring radii, indexed by ring: 0 = the outer 8×8 border,
+        /// 3 = the centre 2×2.</summary>
+        static readonly float[] PadRingRadius = { 0.3957f, 0.2957f, 0.1957f, 0.0957f };
+
+        /// <summary>Pad diameters per ring. Inner rings are slightly smaller because
+        /// they have less circumference to share — expected, not a defect.</summary>
+        static readonly float[] PadRingSize   = { 0.0457f, 0.0500f, 0.0522f, 0.0543f };
+
+        static readonly float[] KnobArcRadius = { 0.4870f, 0.5478f, 0.6087f };
+        const float KnobArcStroke    = 0.0152f;
+        const float FaderArcRadius   = 0.6870f;
+        const float FaderArcStroke   = 0.0239f;   // visibly thicker than a knob arc
+        const float MasterArcRadius  = 0.7652f;
+        const float MasterArcStroke  = 0.0283f;   // thickest of the three
+        const float ToggleRingRadius = 0.8522f;
+        const float ToggleSize       = 0.0261f;
+        const float ChannelLabelRadius = 0.9043f;
+
+        /// <summary>Arc length of one channel's slice. The slice is 45° wide; the arc
+        /// is 39°, leaving a 6° gap so neighbouring channels read apart.</summary>
+        const float SliceSweepDeg = 39f;
+
+        /// <summary>Angular offset of the Mute / Rec-Arm pair either side of their
+        /// channel angle, so the outer ring still reads by channel.</summary>
+        const float TogglePairOffsetDeg = 7f;
+
+        /// <summary>Channel <paramref name="c"/> (0-based) sits at this UI angle.
+        /// Channel 1 is at the top and channels advance clockwise — y grows downward,
+        /// so -90° is straight up.</summary>
+        static float ChannelAngle(int c) => -90f + c * 45f;
+
+        /// <summary>Absolutely positions <paramref name="el"/> with its *centre* at
+        /// polar (<paramref name="r"/>, <paramref name="deg"/>) from the square's
+        /// centre. UI degrees throughout: y down, so increasing angle runs clockwise.</summary>
+        static void PlacePolar(VisualElement el, float cx, float cy, float r, float deg, float size)
+        {
+            float rad = deg * Mathf.Deg2Rad;
+            el.style.position = Position.Absolute;
+            el.style.width  = size;
+            el.style.height = size;
+            el.style.left = cx + Mathf.Cos(rad) * r - size * 0.5f;
+            el.style.top  = cy + Mathf.Sin(rad) * r - size * 0.5f;
+        }
+
+        /// <summary>
+        /// Walks one square ring of the 8×8 grid clockwise from its top-left cell,
+        /// yielding 1-based (row, col). Ring 0 is the outer border (28 cells), 3 the
+        /// centre 2×2 (4 cells). Walking rather than sorting is what preserves
+        /// ring-neighbour adjacency, so the circle still reads like the grid.
+        /// </summary>
+        static System.Collections.Generic.IEnumerable<(int row, int col)> WalkRing(int ring)
+        {
+            int lo = ring + 1, hi = 8 - ring;
+            for (int c = lo; c <= hi; c++) yield return (lo, c);          // top, L→R
+            for (int r = lo + 1; r <= hi; r++) yield return (r, hi);      // right, T→B
+            for (int c = hi - 1; c >= lo; c--) yield return (hi, c);      // bottom, R→L
+            for (int r = hi - 1; r >= lo + 1; r--) yield return (r, lo);  // left, B→T
+        }
+
+        /// <summary>
+        /// Radial 1 — concentric rings, centre outward. Populates the same
+        /// <see cref="DrawerView"/> arrays as the linear builder with the same widget
+        /// types, so every event handler works unchanged; only the geometry differs.
+        ///
+        /// Section visibility is honoured by skipping bands, with radii left fixed:
+        /// hiding the mixer leaves the pad rings where they are rather than re-flowing
+        /// the stack, which would need a second radius table per combination.
+        /// </summary>
+        VisualElement BuildRadial1Section(DrawerView view)
+        {
+            var section = MakeSection("Radial");
+            section.style.alignSelf  = Align.Stretch;
+            section.style.alignItems = Align.Center;
+            view.radialSection = section;
+
+            // Explicit square, exactly like the pad grid: arithmetic from a constant,
+            // never measured. Absolute children position against this box.
+            var square = new VisualElement { name = "radial" };
+            square.style.width  = RadialSideDesign;
+            square.style.height = RadialSideDesign;
+            square.style.flexShrink = 0;
+            square.pickingMode = PickingMode.Ignore;
+
+            const float R  = RadialSideDesign * 0.5f;
+            const float cx = R, cy = R;
+
+            if (_showMf64)
+            {
+                var cfg = _btnRouter != null ? _btnRouter.Config : null;
+
+                for (int ring = 0; ring < 4; ring++)
+                {
+                    foreach (var (row, col) in WalkRing(ring))
+                    {
+                        int note = MidiFighter64InputMap.ToNote(row, col);
+                        var btn  = MidiFighter64InputMap.FromNote(note);
+                        var mode = cfg != null ? cfg.GetMode(btn) : MidiFighterButtonMode.Button;
+
+                        var cell = new PadCell
+                        {
+                            CellMode = mode == MidiFighterButtonMode.Toggle
+                                     ? PadCell.Mode.Toggle : PadCell.Mode.Button,
+                            FillColor   = Colors.AdaptLed(_padRawFill[btn.linearIndex]),
+                            StrokeColor = Colors.PadStroke,
+                        };
+                        view.pads[btn.linearIndex] = cell;
+                        square.Add(cell);
+                    }
+                }
+            }
+
+            if (_showMidiMix)
+            {
+                for (int ch = 0; ch < 8; ch++)
+                {
+                    float mid   = ChannelAngle(ch);
+                    float start = mid - SliceSweepDeg * 0.5f;   // fill grows clockwise from here
+
+                    for (int row = 0; row < 3; row++)
+                    {
+                        var arc = MakeArc(KnobArcRadius[row] * R, start, SliceSweepDeg,
+                                          KnobArcStroke * R);
+                        view.knobArcs[ch, row] = arc;
+                        square.Add(arc);
+                    }
+
+                    var fader = MakeArc(FaderArcRadius * R, start, SliceSweepDeg,
+                                        FaderArcStroke * R);
+                    view.faderArcs[ch] = fader;
+                    square.Add(fader);
+
+                    // Mute leads its channel angle, Rec-Arm trails it.
+                    var mute = new PadCell { CellMode = PadCell.Mode.Toggle, FillColor = Colors.Ink,
+                                             StrokeColor = Colors.PadStroke };
+                    PlacePolar(mute, cx, cy, ToggleRingRadius * R,
+                               mid - TogglePairOffsetDeg, ToggleSize * R);
+                    view.mutes[ch] = mute;
+                    square.Add(mute);
+
+                    var rec = new PadCell { CellMode = PadCell.Mode.Toggle, FillColor = Colors.Ink,
+                                            StrokeColor = Colors.PadStroke };
+                    PlacePolar(rec, cx, cy, ToggleRingRadius * R,
+                               mid + TogglePairOffsetDeg, ToggleSize * R);
+                    view.recArms[ch] = rec;
+                    square.Add(rec);
+
+                    // Channel caption, outside the toggle ring. Given a generous box
+                    // and centred text, since a label's own width isn't known here.
+                    var label = MakeLabel($"{ch + 1}", CaptionFontSize);
+                    float labelBox = ToggleSize * R * 4f;
+                    PlacePolar(label, cx, cy, ChannelLabelRadius * R, mid, labelBox);
+                    label.style.height = StyleKeyword.Auto;
+                    label.style.unityTextAlign = TextAnchor.MiddleCenter;
+                    square.Add(label);
+                }
+
+                // Master: the only continuous ring among segmented arcs, which is what
+                // distinguishes it — no separate colour needed.
+                view.masterArc = MakeArc(MasterArcRadius * R, -90f, 360f, MasterArcStroke * R);
+                square.Add(view.masterArc);
+            }
+
+            // Solo modifier and Bank L/R are deliberately not built in radial layouts.
+            // The handlers null-check, so leaving those view fields null is enough.
+
+            section.Add(square);
+            // Geometry comes from the shared placer so the build path and the live
+            // sliders can never disagree about where a pad belongs.
+            PlaceRadialPads(view);
+            return section;
+        }
+
+        /// <summary>
+        /// Positions the 64 pads on their four rings. Split out from the builder so
+        /// the Pad Size and Ring Spread sliders can move them without a rebuild.
+        ///
+        /// Ring 0 is the crowding constraint: 28 pads share the longest circumference
+        /// but still get the least arc each, so it is what touches first when Pad Size
+        /// rises or Ring Spread falls.
+        /// </summary>
+        void PlaceRadialPads(DrawerView v)
+        {
+            // Hard guard: in Linear1 these same PadCells are flex children of the row
+            // containers, and absolutely positioning them would collapse the grid.
+            if (!IsRadial) return;
+
+            const float R = RadialSideDesign * 0.5f;
+
+            for (int ring = 0; ring < 4; ring++)
+            {
+                var cells = new System.Collections.Generic.List<(int row, int col)>(WalkRing(ring));
+                float rr   = PadRingRadius[ring] * _radialRingSpread * R;
+                float size = PadRingSize[ring]   * _radialPadScale   * R;
+
+                for (int i = 0; i < cells.Count; i++)
+                {
+                    var (row, col) = cells[i];
+                    var btn  = MidiFighter64InputMap.FromNote(MidiFighter64InputMap.ToNote(row, col));
+                    var cell = v.pads[btn.linearIndex];
+                    if (cell == null) continue;   // MF64 section hidden
+
+                    // Evenly distributed over the full circle, starting at the top.
+                    PlacePolar(cell, R, R, rr, -90f + (i / (float)cells.Count) * 360f, size);
+                }
+            }
+        }
+
+        /// <summary>One radial arc, inked from the current palette so it lands
+        /// correctly even before <see cref="ApplyTheme"/>'s pass.</summary>
+        RadialArc MakeArc(float radius, float startDeg, float sweepDeg, float stroke)
+        {
+            var arc = new RadialArc
+            {
+                Radius     = radius,
+                StartDeg   = startDeg,
+                SweepDeg   = sweepDeg,
+                BaseStroke = stroke,
+                StrokeScale = _strokeWeight,
+            };
+            arc.SetInk(Colors.Ink, Colors.Track);
+            return arc;
         }
 
         VisualElement BuildMf64Section(DrawerView view)
@@ -1255,6 +1718,11 @@ namespace MidiFighter64
         {
             foreach (var v in _views)
             {
+                // Lives on the root, so the drawer's slide never covers it. No
+                // animation — there is nothing offscreen for it to slide to.
+                if (v.floatingMessage != null)
+                    v.floatingMessage.style.display = _hidden ? DisplayStyle.None : DisplayStyle.Flex;
+
                 var d = v.drawer;
                 if (d == null) continue;
 
@@ -1363,6 +1831,11 @@ namespace MidiFighter64
 
         void FocusMf64Pad(int row1Based, int col1Based)
         {
+            // Fisheye is flex-grow on the row containers, which only exist in Linear1;
+            // a radial builder never populates mf64Rows. Guarding here rather than at
+            // every call site keeps the press handlers layout-agnostic.
+            if (IsRadial) return;
+
             int activeRow = row1Based - 1;
             int activeCol = col1Based - 1;
             _focusRow = activeRow;
@@ -1466,10 +1939,21 @@ namespace MidiFighter64
             _knobsSeen[ch, r] = true;
             foreach (var v in _views)
             {
+                // Each layout populates one of these and leaves the other null, so
+                // both are guarded independently — an early `continue` on the linear
+                // widget would silently skip the radial one.
                 var k = v.knobs[ch, r];
-                if (k == null) continue;
-                k.Value = value;
-                if (!wasSeen) k.style.opacity = SeenScale(true);
+                if (k != null)
+                {
+                    k.Value = value;
+                    if (!wasSeen) k.style.opacity = SeenScale(true);
+                }
+                var arc = v.knobArcs[ch, r];
+                if (arc != null)
+                {
+                    arc.SetValue(value);
+                    if (!wasSeen) arc.style.opacity = SeenScale(true);
+                }
             }
             SetMessage($"Mix Knob R{row} Ch{channel}  {value:0.00}");
         }
@@ -1483,9 +1967,18 @@ namespace MidiFighter64
             foreach (var v in _views)
             {
                 var bar = v.faderBars[ch];
-                if (bar == null) continue;
-                bar.style.height = new Length(Mathf.Clamp01(value) * 100f, LengthUnit.Percent);
-                if (!wasSeen && v.faderTracks[ch] != null) v.faderTracks[ch].style.opacity = SeenScale(true);
+                if (bar != null)
+                {
+                    bar.style.height = new Length(Mathf.Clamp01(value) * 100f, LengthUnit.Percent);
+                    if (!wasSeen && v.faderTracks[ch] != null)
+                        v.faderTracks[ch].style.opacity = SeenScale(true);
+                }
+                var arc = v.faderArcs[ch];
+                if (arc != null)
+                {
+                    arc.SetValue(value);
+                    if (!wasSeen) arc.style.opacity = SeenScale(true);
+                }
             }
             SetMessage($"Mix Fader Ch{channel}  {value:0.00}");
         }
@@ -1496,9 +1989,17 @@ namespace MidiFighter64
             _masterFaderSeen = true;
             foreach (var v in _views)
             {
-                if (v.masterFaderBar == null) continue;
-                v.masterFaderBar.style.width = new Length(Mathf.Clamp01(value) * 100f, LengthUnit.Percent);
-                if (!wasSeen && v.masterFaderTrack != null) v.masterFaderTrack.style.opacity = SeenScale(true);
+                if (v.masterFaderBar != null)
+                {
+                    v.masterFaderBar.style.width = new Length(Mathf.Clamp01(value) * 100f, LengthUnit.Percent);
+                    if (!wasSeen && v.masterFaderTrack != null)
+                        v.masterFaderTrack.style.opacity = SeenScale(true);
+                }
+                if (v.masterArc != null)
+                {
+                    v.masterArc.SetValue(value);
+                    if (!wasSeen) v.masterArc.style.opacity = SeenScale(true);
+                }
             }
             SetMessage($"Mix Master  {value:0.00}");
         }
