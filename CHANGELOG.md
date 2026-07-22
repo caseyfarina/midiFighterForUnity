@@ -7,6 +7,7 @@
 - **Drawer message strip reads `ON` / `OFF` for Mute and Rec-Arm** instead of `DOWN` / `UP`, which only described the momentary case.
 
 ### Fixed
+- **Drawer under-filled the display when the MF64 section was hidden.** `DrawerHeight` gated the mix section on `_showMidiMix` but added the pad grid's 600 design units unconditionally, so a mixer-only drawer budgeted ~1082 units for ~452 units of content. `Expand` scales by `min(screenW/refW, screenH/refH)`, so height bound against the phantom units and the mixer rendered at roughly 40% of the display at Screen Fill 1.0. Every term is now conditional on its section, and the standalone message strip (built whenever Mix is hidden) is budgeted too, so all four visibility combinations fill correctly. The Log Layout Report gained a `sections` line listing the budget's terms.
 - **Latching buttons appeared dead when a second MIDI port carried a copy of the controller's traffic.** `MidiEventManager` connects to every MIDI input port and merges them into one stream, so a monitor, loopback, or network port echoing the same device delivered every message twice — toggling each latch on and straight back off within a single frame. Momentary consumers couldn't see it (on/on then off/off lands in the same place), which is why it only surfaced once latching became the default.
 
 ### Added

@@ -444,16 +444,51 @@ namespace MidiFighter64.Samples
         /// <summary>Fixed content height of the MIDI Mix section, in design units.</summary>
         const float MixSectionHeight = StripHeight + MixChromeHeight;
 
+        /// <summary>Content height of the MF64 section: its own padding plus the
+        /// pad square.</summary>
+        const float Mf64SectionHeight = (2f * SectionPad) + GridSideDesign;
+
+        /// <summary>Height of the standalone message strip, built only when the mix
+        /// section is hidden (with Mix shown the strip lives in its utility row and
+        /// is already inside <see cref="MixChromeHeight"/>). Estimated the same way
+        /// and for the same reason: a text line plus its padding.</summary>
+        const float MessageSectionHeight = (2f * SectionPad) + (MessageFontSize * 1.2f) + 8f;
+
         /// <summary>Side of the 8×8 pad square, in design units.</summary>
         float GridSide => GridSideDesign;
 
-        /// <summary>Follows from the square: the grid plus everything beside it.</summary>
+        /// <summary>Follows from the square: the grid plus everything beside it.
+        /// Unconditional on purpose — the mix section is deliberately built to the
+        /// same content width so the two sections' 8 columns line up, so it wants
+        /// the grid's width even when the grid isn't shown.</summary>
         float DrawerWidth => GridSide + (2f * SectionPad) + (2f * DrawerPadX);
 
-        /// <summary>Full drawer height in design units. Sums the same constants the
-        /// layout actually applies, so it tracks whether the mix section is shown.</summary>
-        float DrawerHeight => (2f * DrawerPadY) + (2f * SectionPad) + GridSide
-                            + (_showMidiMix ? Mf64SectionGap + MixSectionHeight : 0f);
+        /// <summary>
+        /// Full drawer height in design units, summing exactly what <c>BuildView</c>
+        /// lays out for the current section visibility.
+        ///
+        /// Every term must be conditional on its section. A term that outlives the
+        /// section it measures leaves phantom units in the derived reference, and
+        /// since `Expand` scales by min(screenW/refW, screenH/refH) the drawer then
+        /// under-fills by exactly that ratio — Screen Fill still "works", it just
+        /// fills a budget that is mostly empty space. Hiding the MF64 grid used to
+        /// do this, costing 600 units and rendering the mixer at ~40% of the display.
+        ///
+        /// There is always at least one section: with Mix hidden the message strip
+        /// becomes its own panel, so all four visibility combinations have content.
+        /// </summary>
+        float DrawerHeight
+        {
+            get
+            {
+                float h = 2f * DrawerPadY;
+                // The gap is the MF64 section's own marginBottom, and a section
+                // always follows it — so it belongs to the MF64 term, not between.
+                if (_showMf64) h += Mf64SectionHeight + Mf64SectionGap;
+                h += _showMidiMix ? MixSectionHeight : MessageSectionHeight;
+                return h;
+            }
+        }
 
         /// <summary>Reference resolution is derived, not authored. `Expand` scales by
         /// min(screenW/refW, screenH/refH), so making the reference the drawer's own
@@ -681,6 +716,13 @@ namespace MidiFighter64.Samples
             sb.AppendLine("[MidiStatusDrawer] layout diagnostics");
             sb.AppendLine($"  screen           {Screen.width}x{Screen.height}  (aspect {(float)Screen.width / Mathf.Max(1, Screen.height):0.000})");
             sb.AppendLine($"  refResolution    {DerivedReferenceResolution}  (design {DrawerWidth:0.#}x{DrawerHeight:0.#}, fill {_screenFraction:0.00})");
+            // Which sections are in the height budget. Without this the coverage
+            // numbers below can't be read: an under-filling drawer looks identical
+            // whether ScreenFraction is wrong or the budget counts a hidden section.
+            sb.AppendLine($"  sections         mf64={_showMf64} mix={_showMidiMix}  (budget: " +
+                          $"{(_showMf64 ? $"mf64 {Mf64SectionHeight:0.#} + gap {Mf64SectionGap:0.#} + " : "")}" +
+                          $"{(_showMidiMix ? $"mix {MixSectionHeight:0.#}" : $"msg {MessageSectionHeight:0.#}")}" +
+                          $" + pad {2f * DrawerPadY:0.#})");
 
             float dw = v.drawer.resolvedStyle.width, dh = v.drawer.resolvedStyle.height;
             sb.AppendLine($"  drawer resolved  {dw:0.#}x{dh:0.#}");

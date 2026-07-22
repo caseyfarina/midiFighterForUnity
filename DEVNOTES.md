@@ -83,6 +83,7 @@ C:\Users\casey\AppData\Local\Unity\Editor\Editor.log
 - **`aspect-ratio` is not in USS on Unity 6000.0.** It's in later docs, so search results will suggest it. The package's declared minimum is 6000.0.
 - **Don't push *rebuilding* drawer config from `OnValidate`.** A rebuild destroys and creates GameObjects — illegal from `OnValidate` and a route to editor deadlock. `MidiSceneBootstrapper.OnValidate` deliberately only normalizes fields. `MidiStatusDrawer.OnValidate` exists but is scoped to `ApplyTheme` + `ApplyPlacement`, both of which restyle live elements and touch neither the tree nor any GameObject. Anything you add there must be in that class, or the freeze comes back.
 - **New serialized fields on `MidiSceneBootstrapper` need a migration, and there are two kinds.** Field initializers don't re-run for already-serialized components, so scenes saved before the field existed deserialize it to zero. If zero is outside the field's legal range (`_drawerScreenFraction`, `_mf64FisheyeScale`, `_drawerStrokeWeight`) a value guard in `NormalizeInlineArrays` is enough. If zero is a *legitimate* setting — any bool, and `_drawerPanelOpacity`, where 0 means "no panel" — a guard would clobber a deliberate choice, so it needs a `MigrateSerializedDefaults` block and a `CurrentSerializedVersion` bump. Picking the wrong one is silent. Has caused two separate "why is the drawer tiny" investigations.
+- **Every term in `DrawerHeight` must be conditional on the section it measures.** `GridSide` was unconditional while `MixSectionHeight` was gated on `_showMidiMix`, so a mixer-only drawer carried 600 phantom design units — reference ~1082 units tall against ~452 of content, and under `Expand`'s `min()` the whole thing rendered at ~40% of the display at Screen Fill 1.0. The tell is that `Screen Fill` appears broken while being exactly correct: it fills a budget that is mostly empty space. Note the message strip becomes its own panel when Mix is hidden, so all four visibility combinations have content and the budget has to cover each. Fixed 2026-07-21; the Log Layout Report now prints a `sections` line showing the budget's terms.
 - **Every drawer color goes through `Palette.For(theme, opacity)`; every stroke through `StrokeWidth * StrokeScale`.** A literal at a build site survives the initial build and then gets skipped by `ApplyTheme`, so it only diverges once the user changes theme — long after the change that caused it.
 
 ---
@@ -101,21 +102,6 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 ---
 
 ## Known issues / future work
-
-- **BUG: with the MF64 section hidden, the drawer under-fills badly.** Reported 2026-07-21: Show Midi Fighter 64 off, Show MIDI Mix on, Screen Fill 1.0 — the mixer renders at roughly 40% of the display instead of filling it.
-
-  Cause is a one-sided condition in `DrawerHeight`:
-
-  ```csharp
-  float DrawerHeight => (2f * DrawerPadY) + (2f * SectionPad) + GridSide
-                      + (_showMidiMix ? Mf64SectionGap + MixSectionHeight : 0f);
-  ```
-
-  `_showMidiMix` is accounted for, `_showMf64` is not — `GridSide` (600 design units) is added unconditionally. So with only the mixer shown, the derived reference is ~1082 units tall against ~452 units of real content. `Expand` scales by `min(screenW/refW, screenH/refH)`, height binds, and everything shrinks by the ratio of the phantom 600 units. Screen Fill still "works", it's just hitting the fraction against a drawer that's mostly empty space.
-
-  The fix is to make the term conditional the same way, and to drop `Mf64SectionGap` when either section is absent (the gap only exists *between* two sections). Both flags off is already a real case — the message strip gets its own panel — so the expression has to handle all four combinations, and `DrawerWidth` should be reviewed at the same time: it hard-codes `GridSide` too, which is currently harmless only because the mix section is deliberately built to the same width.
-
-  Worth adding a Log Layout Report assertion for it: with one section hidden, `drawer resolved` height should stay close to `canvas × ScreenFill`, and today it doesn't.
 
 - **First MIDI event per channel is often lost.** Minis creates the device on first event and subscribes callbacks *after*, so event #1 slips through. Would need a fix in Minis or a warmup message. Workaround: doc note tells users to press twice on startup.
 - **RtMidi cross-platform** — package works on Windows. macOS/Linux paths through RtMidi should work but haven't been hardware-tested.
