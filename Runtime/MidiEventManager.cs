@@ -30,13 +30,18 @@ namespace MidiFighter64
                  "allow list. Use it to block monitors and loopback ports that echo another device's traffic.")]
         [SerializeField] string[] _blockedDeviceNames = new string[0];
 
+        // The two setters deliberately only assign — they do NOT reconnect. Setting
+        // both would otherwise re-run discovery twice; batch the changes, then call
+        // Reconnect() once (or use SetDeviceFilter, which does exactly that).
         /// <summary>Substrings of port names to connect to. Empty = connect to all. Call <see cref="Reconnect"/> after changing.</summary>
         public string[] AllowedDeviceNames { get => _allowedDeviceNames; set => _allowedDeviceNames = value ?? new string[0]; }
 
         /// <summary>Substrings of port names to never connect to. Applied after the allow list.</summary>
         public string[] BlockedDeviceNames { get => _blockedDeviceNames; set => _blockedDeviceNames = value ?? new string[0]; }
 
-        /// <summary>Sets both filters and re-runs device discovery in one step.</summary>
+        /// <summary>Sets both filters and re-runs device discovery in one step. The
+        /// combined primitive, so a filter change costs one reconnect rather than the
+        /// two that setting the properties separately and reconnecting would.</summary>
         public void SetDeviceFilter(string[] allowed, string[] blocked)
         {
             AllowedDeviceNames = allowed;
@@ -91,13 +96,24 @@ namespace MidiFighter64
             InputSystem.onDeviceChange -= HandleDeviceChange;
         }
 
+        // Only reconnect while playing: OnValidate also fires in edit mode and
+        // during deserialization, where there are no live devices to bind and the
+        // guard in Reconnect wouldn't distinguish that from a real disable. Matches
+        // MidiFighterButtonRouter's OnValidate, which gates its LED preview the same
+        // way. This is what makes editing the filter in the inspector during play
+        // take effect immediately — the whole point of the filter is diagnosing a
+        // duplicate port live, so it has to respond live.
+        void OnValidate()
+        {
+            if (Application.isPlaying) Reconnect();
+        }
+
         void HandleDeviceChange(InputDevice device, InputDeviceChange change)
         {
             if (device is not Minis.MidiDevice) return;
 
             Debug.Log($"[MidiEventManager] Device {change}: {device.description.product} — reconnecting...");
-            DisconnectAllDevices();
-            ConnectAllDevices();
+            Reconnect();
         }
 
         void ConnectAllDevices()
