@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.2] — 2026-07-23
+
+### Fixed
+- **The "No Theme Style Sheet set to PanelSettings" warning is gone.** `BuildView` now assigns an empty runtime `ThemeStyleSheet` when no sheet is supplied, satisfying the null check that produced the warning on every drawer build. The drawer styles every element inline and draws with Painter2D, reading no theme USS variables — which is why it always rendered correctly despite the warning — so an empty sheet is enough and ships no asset. One shared instance, destroyed with the component.
+
+### Changed
+- **Editing the device filter in the inspector now takes effect immediately in play mode.** `MidiEventManager` gained an `OnValidate` that reconnects while playing, so changing Allowed / Blocked Device Names live re-runs device discovery on the spot — which matters because diagnosing a duplicate MIDI port (the fault the filter exists for) is inherently a live, interactive task. The two property setters still deliberately do not reconnect, so both lists can be set before one `Reconnect()`; `SetDeviceFilter` remains the combined primitive. `HandleDeviceChange` now calls `Reconnect()` instead of a verbatim copy of its body.
+
 ## [2.2.1] — 2026-07-23
 
 ### Added
