@@ -95,8 +95,8 @@ Branch in `BuildTree()` on `_layout` to call `BuildLinear1` (the existing body, 
 
 `MidiStatusDrawer.OnValidate` is deliberately scoped to `ApplyTheme` + `ApplyPlacement`, both of which restyle live elements and touch neither the tree nor any GameObject. **A layout change rebuilds the tree, so it must not be pushed from `OnValidate`** — that route is a documented editor deadlock. Provide instead:
 
-- **F4 cycles the layout** (Linear 1 → Radial 1 → Radial 2 → Linear 1), gated by `EnableFunctionKeys` alongside F2/F3, added in `Update()`.
-- A **bootstrapper field** applied at `Awake` via `ApplyDrawerConfig`, like every other drawer setting.
+- **F4 cycles the layout**, gated by `EnableFunctionKeys` alongside F2/F3, added in `Update()`. *(As shipped, F4 cycles only the two live layouts — Linear 1 ⇄ Radial 1 — until Radial 2 exists.)*
+- A **serialized `_layout` field on the drawer**, with a `Layout` property that rebuilds on change. *(The plan originally routed this through a bootstrapper field + `ApplyDrawerConfig`; the bootstrapper was removed in 2.0.0, so the setting lives directly on the drawer like every other one now.)*
 - The scripting equivalent, `MidiStatusDrawer.Instance.Layout = …`.
 
 Document F4 in `CLAUDE.md`'s hotkey list.
@@ -223,15 +223,26 @@ Available tangential room shrinks toward the centre: arc length at radius `r` fo
 
 ## Implementation order
 
-1. Add the `DrawerLayout` enum (`Linear1 = 0`) + serialized field + `Layout` property + `RebuildIfLive()`. Extract today's `BuildTree` body into `BuildLinear1` and branch. **Confirm Linear 1 still builds pixel-identically before writing any radial code.**
-2. Branch `DrawerWidth` / `DrawerHeight` on layout; add `RadialSideDesign` and `RadialSectionHeight`; add the layout mode to the Log Layout Report's `sections` line. Verify with the report that a stub radial (empty square) hits Screen Fill exactly.
-3. Route the message strip to its own panel in radial modes.
-4. Add `RadialArc : VisualElement` — Painter2D; fields `cx, cy, radius, startDeg, sweepDeg, strokeWidth, trackColor, fillColor`; `float Value` / `SetValue`; `SetInk(fill, track)`; `StrokeScale`; `pickingMode = Ignore`. Add `knobArcs` / `faderArcs` / `masterArc` to `DrawerView`, the `Query<RadialArc>` line to `ApplyTheme`, and the additive + seen-opacity lines to `HandleMixKnob`, `HandleMixChannelFader`, `HandleMixMasterFader`.
-5. Guard `FocusMf64Pad` / `ClearMf64Focus` to no-op when `_layout != Linear1`; reset focus state on layout switch.
-6. **Radial 1** — `BuildRadial1()`: a `PolarPlace(element, r, θ, size)` helper, then the four pad rings (ring membership + clockwise walk), the 24 knob arcs, 8 fader arcs, the 360° master ring, the 16 toggles, and the channel labels. Populate `pads`, `knobArcs`, `faderArcs`, `masterArc`, `mutes`, `recArms`. Compare against `radial_A_centered.svg` side by side, then verify live MIDI moves the right widgets.
-7. **Radial 2** — `BuildRadial2()`: 8 spokes across 270°, inner-out stacking, per-band scaling. Populate the same arrays.
-8. F4 hotkey + bootstrapper field + `ApplyDrawerConfig` + custom-editor entry (the four-place tax `DEVNOTES.md` describes). Confirm clean rebuild and no leaked subscriptions across switches (mirror the `OnEnable`/`OnDisable` `+=`/`-=` discipline).
-9. Docs, all six files `DEVNOTES.md` lists as "must stay in sync": `CLAUDE.md` (layout modes + F4 under the drawer section), `DEVNOTES.md` (any new hard-won constraint), `Documentation~/index.html`, `README.md` if the feature list changes, `CHANGELOG.md`, and a `package.json` **minor** bump. **Then tag the commit** — untagged bumps make the version unretrievable via the git-URL install. Commit directly to `main`.
+### Done — shipped as the Radial 1 infrastructure (2.2.0)
+
+The whole scaffolding a radial layout needs is already in `MidiStatusDrawer` and can be reused by `BuildRadial2` unchanged:
+
+- ✅ `DrawerLayout` enum (`Linear1 = 0`), serialized `_layout`, `Layout` property, `RebuildIfLive`; `BuildTree` branches on the layout.
+- ✅ `DrawerWidth` / `DrawerHeight` branch on `IsRadial`; `RadialSideDesign` / `RadialSectionHeight` exist.
+- ✅ The event readout floats bottom-left in radial (see caveat 1 at the top) — this covers Radial 2 too, so **`BuildRadial2` does not build a message strip.**
+- ✅ `RadialArc` exists, with `Query<RadialArc>` in `ApplyTheme` and the seen-opacity pass in `ApplyUiOpacity`.
+- ✅ The three mix handlers update the linear widget and the arc behind **independent** null checks (caveat 2). `BuildRadial2` just populates `faderArcs` / `knobArcs` and they animate for free.
+- ✅ `FocusMf64Pad` / `ClearMf64Focus` no-op off `Linear1`; focus resets on layout switch.
+- ✅ F4 cycles layouts; `MidiStatusDrawerEditor` groups linear-only vs radial-only settings.
+- ✅ `PlacePolar` helper and the `WalkRing` square-ring walker are in place and reusable.
+
+### Remaining — Radial 2 only
+
+1. **Confirm the five open decisions below.** They gate the geometry; don't start `BuildRadial2` on guesses.
+2. **`BuildRadial2()`** — 8 spokes across 270°, inner→outer stacking (MF64 pads, then 3 knob arcs, then the channel fader), per-band scaling for the tangential-room problem. Populate the *same* `DrawerView` arrays (`pads`, `knobArcs`, `faderArcs`, and `masterArc` if a master home is chosen). Add the `Radial2` branch in `BuildTree` beside the `Radial1` one, and extend `IsRadial` / the `DrawerHeight` radial branch to include it. Extend F4 to cycle through it.
+3. **Fader element** — likely not a `RadialArc` (a tiny-sweep arc degenerates); decide on screen. If it's a new element type, give it the same `SetValue` shape so the existing `faderArcs` handler line drives it.
+4. **Editor** — the `Radial only` group in `MidiStatusDrawerEditor` already exists; add any Radial-2-specific tuning fields to it. No bootstrapper involved — that component was removed in 2.0.0; the drawer owns its own settings now.
+5. **Docs + release** — `CLAUDE.md` (layout list + any new sliders), `DEVNOTES.md` (new constraints), `CHANGELOG.md`, `Documentation~/index.html` / `README.md` if the feature list moves, `package.json` **minor** bump, **then tag** (untagged bumps are unretrievable via the git-URL install). Commit directly to `main`.
 
 ---
 
@@ -246,7 +257,7 @@ Available tangential room shrinks toward the centre: arc length at radius `r` fo
 - **Channel 1 at top, clockwise;** 39° arc sweep, 6° inter-channel gap. *(From the reference render.)*
 - **Radial container sizing:** constant `RadialSideDesign`, never a measured `min(width, height)`.
 - **Section visibility in radial:** flags honoured by skipping bands; radii fixed; budget unchanged.
-- **Layout switching:** F4 + bootstrapper field + scripting property. Never `OnValidate`.
+- **Layout switching:** F4 + a serialized `_layout` field on the drawer + the `Layout` scripting property. Never `OnValidate`. *(Not the bootstrapper — removed in 2.0.0.)*
 
 ## Open decisions (Radial 2 only — confirm before coding step 7)
 
@@ -260,10 +271,6 @@ Available tangential room shrinks toward the centre: arc length at radius `r` fo
 
 ## Scope estimate
 
-- `RadialArc.cs` ~80 lines (knob arcs, channel faders, master ring; incl. `StrokeScale` + `SetInk`).
-- `BuildRadial1` ~200 lines; `BuildRadial2` ~150 lines.
-- Enum/field/property/F4/guards/handler edits ~60 lines.
-- Size-budget branch + message-strip routing + Log Layout Report line ~30 lines.
-- Bootstrapper + custom editor ~40 lines.
+Radial 1 landed close to estimate (`RadialArc` ~130 lines with the tuning sliders, `BuildRadial1` + `PlaceRadialPads` ~230, the enum/budget/handler/editor wiring ~200 across the file and the new `MidiStatusDrawerEditor`).
 
-No new packages, no new external deps. Reuses `PadCell` for pads + toggles and every existing event handler (radial arc updates are additive lines).
+**Radial 2 remaining:** `BuildRadial2` ~150 lines, a fader element ~40, plus its `BuildTree` / `IsRadial` / F4 / editor-field wiring ~30. No new packages, no new external deps — it reuses `PadCell`, `RadialArc`, `PlacePolar`, every event handler, and the whole size-budget / theme / opacity / hide infrastructure already built for Radial 1.
