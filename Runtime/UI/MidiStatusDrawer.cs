@@ -757,6 +757,9 @@ namespace MidiFighter64
         void OnDestroy()
         {
             if (Instance == this) Instance = null;
+            // Survives view rebuilds (destroying a PanelSettings doesn't cascade to
+            // the sheet it references), so it's released here rather than in teardown.
+            if (_fallbackTheme != null) Destroy(_fallbackTheme);
         }
 
         // Restyle-only settings, so they can be dialed in live from this
@@ -1095,6 +1098,25 @@ namespace MidiFighter64
             _views.Clear();
         }
 
+        // A single empty ThemeStyleSheet shared by every view, purely to keep the
+        // PanelSettings' themeStyleSheet non-null. Shared rather than per-view because
+        // it carries no per-view state and would otherwise be recreated on every
+        // rebuild; destroyed once in OnDestroy. hideFlags keeps it out of any save.
+        ThemeStyleSheet _fallbackTheme;
+        ThemeStyleSheet FallbackTheme
+        {
+            get
+            {
+                if (_fallbackTheme == null)
+                {
+                    _fallbackTheme = ScriptableObject.CreateInstance<ThemeStyleSheet>();
+                    _fallbackTheme.name = "MidiStatusDrawer_FallbackTheme";
+                    _fallbackTheme.hideFlags = HideFlags.DontSave;
+                }
+                return _fallbackTheme;
+            }
+        }
+
         DrawerView BuildView(int displayIndex)
         {
             var view = new DrawerView();
@@ -1115,8 +1137,12 @@ namespace MidiFighter64
             view.settings.scaleMode           = PanelScaleMode.ScaleWithScreenSize;
             view.settings.referenceResolution = DerivedReferenceResolution;
             view.settings.screenMatchMode     = PanelScreenMatchMode.Expand;
-            if (_themeStyleSheet != null)
-                view.settings.themeStyleSheet = _themeStyleSheet;
+            // A PanelSettings with a null themeStyleSheet logs a warning on every
+            // build ("UI will not render properly"). The drawer styles every element
+            // itself and reads no theme USS variables — which is why it renders fine
+            // regardless — so an empty fallback theme satisfies the check with no
+            // asset to ship. An author-supplied sheet still wins.
+            view.settings.themeStyleSheet = _themeStyleSheet != null ? _themeStyleSheet : FallbackTheme;
 
             // Host GameObject per view (child of this) so each has its own UIDocument.
             view.host = new GameObject($"Drawer_Display{displayIndex}");
