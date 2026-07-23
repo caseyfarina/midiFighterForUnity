@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.2.1] — 2026-07-23
+
+### Added
+- **`Pad Rotation` slider** *(radial only)* — rotates the MF64 pad rings about the centre, -180 to 180, default -45 (counter-clockwise). Pads only: the knob, fader and toggle bands stay keyed to their channel angles, so rotating them would slide the captions off their bands and break the channel-1-at-top mapping.
+
 ## [2.2.0] — 2026-07-22
 
 ### Added

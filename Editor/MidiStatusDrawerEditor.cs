@@ -22,7 +22,7 @@ namespace MidiFighter64.Editor
         SerializedProperty _showMf64, _showMidiMix;
         SerializedProperty _enableMf64Fisheye, _mf64FisheyeScale;
         SerializedProperty _radialVerticalOffset, _radialMessagePadding;
-        SerializedProperty _radialPadScale, _radialRingSpread;
+        SerializedProperty _radialPadScale, _radialRingSpread, _radialPadRotation;
         SerializedProperty _enableFunctionKeys, _logLayoutDiagnostics;
 
         void OnEnable()
@@ -44,6 +44,7 @@ namespace MidiFighter64.Editor
             _radialMessagePadding = serializedObject.FindProperty("_radialMessagePadding");
             _radialPadScale       = serializedObject.FindProperty("_radialPadScale");
             _radialRingSpread     = serializedObject.FindProperty("_radialRingSpread");
+            _radialPadRotation    = serializedObject.FindProperty("_radialPadRotation");
             _enableFunctionKeys   = serializedObject.FindProperty("_enableFunctionKeys");
             _logLayoutDiagnostics = serializedObject.FindProperty("_logLayoutDiagnostics");
         }
@@ -106,6 +107,8 @@ namespace MidiFighter64.Editor
             Header("Radial only");
             using (new EditorGUI.DisabledScope(!isRadial))
             {
+                EditorGUILayout.PropertyField(_radialPadRotation, new GUIContent("Pad Rotation"));
+                EditorGUILayout.LabelField(" ", "Rotates the pad rings only  ·  negative is counter-clockwise", EditorStyles.miniLabel);
                 EditorGUILayout.PropertyField(_radialPadScale,   new GUIContent("Pad Size"));
                 EditorGUILayout.PropertyField(_radialRingSpread, new GUIContent("Ring Spread"));
                 EditorGUILayout.LabelField(" ", "Ring Spread pulls the grid inward, which also shortens each ring — the two compete for the same arc", EditorStyles.miniLabel);

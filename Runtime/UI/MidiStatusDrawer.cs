@@ -238,6 +238,12 @@ namespace MidiFighter64
             }
         }
 
+        [Tooltip("Radial only. Rotates the MF64 pad rings about the centre. Negative " +
+                 "is counter-clockwise. Affects the pads only — the knob, fader and " +
+                 "toggle bands stay keyed to their channel angles.")]
+        [Range(-180f, 180f)]
+        [SerializeField] float _radialPadRotation = -45f;
+
         [Tooltip("Radial only. Diameter of the MF64 pads, as a multiple of the " +
                  "reference layout. Ring 0 (the outer 28) runs out of room first — " +
                  "past about 1.9 at full spread its pads start to touch.")]
@@ -274,6 +280,22 @@ namespace MidiFighter64
                 float v = Mathf.Clamp(value, -1f, 1f);
                 if (Mathf.Approximately(_radialVerticalOffset, v)) return;
                 _radialVerticalOffset = v;
+                ApplyRadialTweaks();
+            }
+        }
+
+        /// <summary>Radial only. Rotates the pad rings about the centre, in degrees.
+        /// Negative is counter-clockwise (y grows downward in UI coordinates, so
+        /// increasing angles run clockwise). Pads only — rotating the mixer bands
+        /// would break the channel-angle mapping the arcs and toggles depend on.</summary>
+        public float RadialPadRotation
+        {
+            get => _radialPadRotation;
+            set
+            {
+                float v = Mathf.Clamp(value, -180f, 180f);
+                if (Mathf.Approximately(_radialPadRotation, v)) return;
+                _radialPadRotation = v;
                 ApplyRadialTweaks();
             }
         }
@@ -1399,7 +1421,9 @@ namespace MidiFighter64
                     if (cell == null) continue;   // MF64 section hidden
 
                     // Evenly distributed over the full circle, starting at the top.
-                    PlacePolar(cell, R, R, rr, -90f + (i / (float)cells.Count) * 360f, size);
+                    PlacePolar(cell, R, R, rr,
+                               -90f + _radialPadRotation + (i / (float)cells.Count) * 360f,
+                               size);
                 }
             }
         }
