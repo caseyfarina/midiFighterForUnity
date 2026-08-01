@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.3.0] — 2026-08-01
+
+### Fixed
+- **Editor freeze on MIDI hotplug.** `MidiFighterOutput` and `MidiMixOutput` polled `PortCount` and reopened the output port from `Update()` — synchronous native RtMidi enumerate/open/close calls, on the main thread, once a second. A slow or stalled native call during a hotplug transition (a device settling after connect/disconnect) could hang the whole editor. That work now runs on a dedicated background thread per component; the output handle is only ever swapped under a lock, so a main-thread LED send and a background-thread reopen can never race on the same handle.
+- **LED sends could abort other subscribers of the same event.** `SendMessage` calls in `MidiFighterOutput`/`MidiMixOutput` are now wrapped in try/catch; a native throw drops the port for the next poll to reopen instead of unwinding into whatever static router event (e.g. `OnMute`) invoked it, which would otherwise skip any subscriber queued after the LED handler.
+- **A duplicated rig (prefab dropped twice, or loaded additively into a second scene) silently double-fired every event.** `MidiMixRouter`, `MidiGridRouter`, and `MidiFighterButtonRouter` had no singleton guard, unlike the managers/outputs. A second live instance now disables itself with a console warning instead of desyncing latch state.
+- **`MidiFighterButtonRouter` leaked a `ScriptableObject`** (its inline-config instance) on every scene load — never destroyed. Now released in `OnDestroy`.
+- **`MidiMixOutput.AutoMirrorButtons` had no effect when toggled on at runtime** — `OnEnable` only subscribed to router events if the flag was already true at startup. Now always subscribes; the flag gates inside the handlers instead.
+
+### Changed
+- **`MidiFighterOutput`'s port-0 fallback is now opt-in** (`_allowFallbackPort`, default off). Previously, if no port with "Fighter" in its name was found, the component opened port 0 and sent LED data — including the `ClearOnStart` note-off burst — to whatever unrelated device that was (a synth, DAW, or virtual port).
+- **`MidiNoteLogger`** gained an enable flag and an optional log-interval throttle, so the shipped example can't cause frame hitches under input flooding when left in a scene.
+- **Documented the package's single-rig assumption** and the Keijiro scoped-registry dependency requirement directly in `CLAUDE.md`, and corrected `UnityMainThreadDispatcher`'s docs — it isn't wired into the MIDI callback path (Minis already delivers on the main thread), so it's documented as an unused, general-purpose utility instead.
+
 ## [2.2.2] — 2026-07-23
 
 ### Fixed

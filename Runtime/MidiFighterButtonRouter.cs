@@ -162,7 +162,11 @@ namespace MidiFighter64
         {
             OnButtonPress = null; OnButtonHold = null;
             OnButtonRelease = null; OnToggle = null;
+            _active = null;
         }
+
+        static MidiFighterButtonRouter _active;
+        bool _isActiveInstance;
 
         // ------------------------------------------------------------------
 
@@ -182,6 +186,19 @@ namespace MidiFighter64
 
         void OnEnable()
         {
+            // A second live router (duplicated prefab, additive scene) would
+            // otherwise double-fire every event and mirror LEDs from two
+            // independent _heldPads/_toggleStates dictionaries — disable the
+            // duplicate instead.
+            if (_active != null && _active != this)
+            {
+                Debug.LogWarning($"[MidiFighterButtonRouter] Another instance ({_active.name}) is already active — disabling this duplicate on {name} to avoid double-firing events.");
+                enabled = false;
+                return;
+            }
+            _active = this;
+            _isActiveInstance = true;
+
             MidiEventManager.OnNoteOn  += HandleNoteOn;
             MidiEventManager.OnNoteOff += HandleNoteOff;
             _initialLedPushDone = false;
@@ -191,9 +208,24 @@ namespace MidiFighter64
 
         void OnDisable()
         {
+            if (!_isActiveInstance) return; // was a disabled duplicate; nothing to unwind
+            _isActiveInstance = false;
+            if (_active == this) _active = null;
+
             MidiEventManager.OnNoteOn  -= HandleNoteOn;
             MidiEventManager.OnNoteOff -= HandleNoteOff;
             _heldPads.Clear();
+        }
+
+        void OnDestroy()
+        {
+            // ActiveConfig lazily creates a HideFlags.DontSave ScriptableObject
+            // for the inline pad grid; nothing else ever releases it.
+            if (_inlineConfig != null)
+            {
+                Destroy(_inlineConfig);
+                _inlineConfig = null;
+            }
         }
 
         void Update()

@@ -10,6 +10,16 @@ Package: `com.caseyfarina.midifighter64` — MIDI input + LED output bridge for:
 
 Target: **Unity 6** (6000.0+). Depends on `com.unity.inputsystem`, `jp.keijiro.minis`, `jp.keijiro.rtmidi`.
 
+**`jp.keijiro.minis` and `jp.keijiro.rtmidi` are not in Unity's default registry.** A fresh project adding this package by git URL will fail to resolve dependencies unless its `Packages/manifest.json` also declares Keijiro's scoped registry first:
+
+```json
+"scopedRegistries": [
+  { "name": "Keijiro", "url": "https://registry.npmjs.com", "scopes": ["jp.keijiro"] }
+]
+```
+
+Add that (via Project Settings → Package Manager, or by hand) *before* adding this package to a new project — see the package `README.md` for the full click-by-click steps.
+
 ---
 
 ## Architecture at a glance
@@ -38,7 +48,7 @@ Hardware ─→ Minis (RtMidi) ─→ MidiEventManager (static events)
 | Component | What it does |
 |---|---|
 | `MidiEventManager` | the only Minis subscriber; merges ports, applies the device filter |
-| `UnityMainThreadDispatcher` | marshals MIDI callbacks onto the main thread |
+| `UnityMainThreadDispatcher` | general-purpose `Enqueue(Action)` → runs on the next `Update()`. Not currently used internally — `MidiEventManager` already receives Minis callbacks on the main thread via the Input System, so there's nothing to marshal. Ships for your own use if you add background-thread work (e.g. a custom output device) that needs to hop back to the main thread. |
 | `MidiGridRouter` | typed MF64 grid events |
 | `MidiMixRouter` | typed Akai MIDI Mix events, Mute/Rec-Arm latching |
 | `MidiFighterButtonRouter` | Button/Toggle semantics per pad, pad config, LED colors |
@@ -47,6 +57,8 @@ Hardware ─→ Minis (RtMidi) ─→ MidiEventManager (static events)
 | `MidiStatusDrawer` | the on-screen overlay mirroring both controllers |
 
 Every setting lives on the component that owns it — select the prefab instance and configure it there. Don't hunt for a separate config object; there isn't one, deliberately (see `DEVNOTES.md` for why the old bootstrapper was removed).
+
+**This package assumes exactly one rig is live at a time.** `MidiEventManager` (and each router) singleton-guards on `Awake`/`OnEnable`; a second instance is either destroyed (`MidiEventManager`, taking its whole GameObject — all eight components on the shipped prefab — down with it) or disabled with a console warning (the routers). Dropping the prefab twice, or additively loading a second scene that contains it, will trip this. There's no supported way to run two rigs side by side.
 
 Remove a component you don't need — nothing depends on all eight being present. Deleting `MidiStatusDrawer` drops the overlay; deleting both `*Output` components makes the rig input-only.
 
@@ -210,6 +222,8 @@ Things that are deliberately different in radial:
 - **Drawer Font** — optional typeface override. Empty = the bundled `CossetteTitre-Regular.ttf` in `Runtime/UI/Resources/`, loaded via `Resources.Load<Font>(MidiStatusDrawer.BundledFontResourceName)`. Falls back to a dynamic OS font (Arial/Helvetica) if that Resources folder is missing.
 - **Enable MF64 Fisheye** — the last-touched pad grows while its row/column neighbors deform to compensate. On by default. Also settable at runtime via `MidiStatusDrawer.Instance.EnableMf64Fisheye`; assigning `false` clears any active focus.
 - **Fisheye Scale** — how far the focused pad grows, 1–6 (default 3). Runtime equivalent: `Mf64FisheyeScale`. It's a **flex-grow weight**, not a pixel size or a multiplier: the focused row/column takes N shares against the other seven rows/columns' 1, so the grid stays exactly square and the growth is always paid for by the neighbors. `1` means no visible growth without disabling the feature. Setting it re-applies to a currently focused pad, so the slider is live in play mode.
+- **Enable Knob Fisheye** *(Linear only)* — the same effect on the MIDI Mix knobs: the last-touched knob grows while its row/column neighbours in the knob grid deform to compensate, **constrained to the knob grid's own bounding box**. On by default. Runtime equivalent `EnableKnobFisheye`; assigning `false` clears any active focus. No effect in radial (the knob arcs aren't a flex grid). The 24 knobs are their own 3×8 flex grid, structurally a wide sibling of the pad grid, which is what keeps the effect off the faders below.
+- **Knob Fisheye Scale** — how far the focused knob grows, 1–6 (default 3). Runtime equivalent `KnobFisheyeScale`. Same flex-grow weight as the pad scale. The **focused knob is held perfectly round and only grows** (`KnobWidget.KeepRound`) — the knob you're adjusting never distorts — while its row/column neighbours warp into ellipses to absorb the growth. `KnobDisplay` fills its cell vertically and fills width ÷ `NeutralAspect` horizontally, so it reads round at rest (no resting distortion, even though the knob grid is wider than it is tall) and warps *continuously* as the fisheye stretches a cell, so there's no pop in or out.
 
 - **Theme** — `Dark` (default) or `Light`. Runtime equivalent: `MidiStatusDrawer.Instance.Theme`, or F3. The panels are semi-transparent and tint toward whatever is behind them, so pick the theme that *opposes* the scene background, not the one that matches it. Restyles in place; never rebuilds, so widgets keep their "seen" state.
 - **Stroke Weight** — global line-weight multiplier for stroked widgets (knob bodies, pad rings), 0.25–4 (default 1). Runtime equivalent: `StrokeWeight`. It multiplies the single `KnobDisplay.StrokeWidth` base that both custom elements share, through their `StrokeScale` property. Radii are all fractions of each element's own size, so thickness is the *only* thing that changes — widget sizes, the pad grid's square, and `MixSectionHeight` are all untouched. Any new stroked drawing must go through `StrokeWidth * StrokeScale` or it won't follow the slider.
@@ -252,7 +266,8 @@ Hiding the MF64 section reclaims its height the same way. **Every term in `Drawe
 **Read-only**
 - All widgets have `pickingMode = Ignore` so scene clicks pass through.
 - Painter2D-drawn `KnobDisplay` and `PadCell` custom `VisualElement`s — no PNGs, no external widget library.
-- `KnobDisplay` draws a 31-dot ring on a 270° arc (gap at the bottom), a stroked body, and a pointer dot. **All radii are fractions of the element's own size**, never literals, so one knob size constant (`KnobSize`) drives the whole thing. Angles use UI coordinates — y grows *downward*, so 135° is bottom-left, 270° is straight up, 405° is bottom-right. The pointer and the ring share one angle mapping, so the pointer always lands on the last lit dot; changing one without the other breaks that.
+- `KnobDisplay` draws a 22-dot ring on a 270° arc (gap at the bottom), a stroked body, and a pointer dot. Radii are fractions of the element's cell size — per axis, so the ring and body warp with the cell while the dots and pointer stay round — driven by `KnobSize` with no literals.
+- **Knob designs are swappable.** `KnobDisplay` is one implementation of the abstract `KnobWidget` (contract: `Value`, `SetInk`, `StrokeScale`, plus `KeepRound` and `NeutralAspect` for the fisheye warp). The drawer constructs knobs in exactly one place — `MidiStatusDrawer.MakeKnob()` — and themes them by the base type, so a new design is a drop-in: subclass `KnobWidget`, fill the cell (don't hard-code width/height — the drawer sets flex), then return it from the factory. How a knob **warps** under the fisheye is up to the design via the two members the drawer drives: `NeutralAspect` (the resting cell aspect — divide horizontal fill by it to read round at rest) and `KeepRound` (set on the focused knob so it grows without distorting). Both default to round, so a design that never distorts just ignores them. Angles use UI coordinates — y grows *downward*, so 135° is bottom-left, 270° is straight up, 405° is bottom-right. The pointer and the ring share one angle mapping, so the pointer always lands on the last lit dot; changing one without the other breaks that.
 
 ### Configure MF64 pad modes and per-pad LED colors
 
@@ -343,8 +358,9 @@ Editor/                         (Editor-only)
   MidiToggleEditor                — inspector for the MidiToggle example
   CreateMidiControllerPrefab      — Tools menu → regenerate the prefab
 
-Tests/Editor/                   (EditMode)
-  MidiFighter64InputMapTests    — corner + round-trip asserts
+Tests/Editor/                   (EditMode, 50 tests)
+  MidiFighter64InputMapTests    — grid note ↔ row/col: corner + round-trip
+  MidiMixInputMapTests          — MIDI Mix CC/note map asserts
 
 (no samples — the prefab is the entry point)
 ```

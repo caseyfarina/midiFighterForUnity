@@ -97,6 +97,9 @@ namespace MidiFighter64
         public static event Action<MixFader, float> OnFaderRaw;
         public static event Action<MixButton, bool> OnButtonRaw;
 
+        static MidiMixRouter _active;
+        bool _isActiveInstance;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics()
         {
@@ -105,6 +108,7 @@ namespace MidiFighter64
             OnSoloModifier = null; OnBankLeft = null; OnBankRight = null;
             OnKnobRaw = null; OnFaderRaw = null; OnButtonRaw = null;
             IsSoloHeld = false;
+            _active = null;
         }
 
         // ------------------------------------------------------------------ //
@@ -113,6 +117,18 @@ namespace MidiFighter64
 
         void OnEnable()
         {
+            // A second live router (duplicated prefab, additive scene) would
+            // otherwise double-fire every event and desync each instance's own
+            // latch arrays — disable the duplicate instead.
+            if (_active != null && _active != this)
+            {
+                Debug.LogWarning($"[MidiMixRouter] Another instance ({_active.name}) is already active — disabling this duplicate on {name} to avoid double-firing events.");
+                enabled = false;
+                return;
+            }
+            _active = this;
+            _isActiveInstance = true;
+
             MidiEventManager.OnControlChange += HandleCC;
             MidiEventManager.OnNoteOn        += HandleNoteOn;
             MidiEventManager.OnNoteOff       += HandleNoteOff;
@@ -120,6 +136,10 @@ namespace MidiFighter64
 
         void OnDisable()
         {
+            if (!_isActiveInstance) return; // was a disabled duplicate; nothing to unwind
+            _isActiveInstance = false;
+            if (_active == this) _active = null;
+
             MidiEventManager.OnControlChange -= HandleCC;
             MidiEventManager.OnNoteOn        -= HandleNoteOn;
             MidiEventManager.OnNoteOff       -= HandleNoteOff;

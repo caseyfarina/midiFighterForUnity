@@ -41,16 +41,37 @@ namespace MidiFighter64
         {
             OnRow1 = null; OnGridPreset = null; OnGridRandomize = null;
             OnRow5 = null; OnSlotToggle = null; OnGridButton = null;
+            _active = null;
         }
+
+        static MidiGridRouter _active;
+        bool _isActiveInstance;
 
         void OnEnable()
         {
+            // A second live router (duplicated prefab, additive scene) would
+            // otherwise double-fire every event downstream — disable the
+            // duplicate instead. Shared across subclasses of MidiGridRouter
+            // deliberately: only one grid rig should ever be active at once.
+            if (_active != null && _active != this)
+            {
+                Debug.LogWarning($"[MidiGridRouter] Another instance ({_active.name}) is already active — disabling this duplicate on {name} to avoid double-firing events.");
+                enabled = false;
+                return;
+            }
+            _active = this;
+            _isActiveInstance = true;
+
             MidiEventManager.OnNoteOn  += HandleNoteOn;
             MidiEventManager.OnNoteOff += HandleNoteOff;
         }
 
         void OnDisable()
         {
+            if (!_isActiveInstance) return; // was a disabled duplicate; nothing to unwind
+            _isActiveInstance = false;
+            if (_active == this) _active = null;
+
             MidiEventManager.OnNoteOn  -= HandleNoteOn;
             MidiEventManager.OnNoteOff -= HandleNoteOff;
         }

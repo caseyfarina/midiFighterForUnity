@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using UnityEngine;
 using RtMidi;
 
@@ -62,7 +63,12 @@ namespace MidiFighter64
     ///   2 → MIDI Channel 3 — color layer (default)
     ///   3 → MIDI Channel 4 — animation layer
     ///
-    /// Hotplug: PortCount is polled each Update; if it changes the port is re-opened.
+    /// Hotplug: PortCount is polled on a background thread; if it changes the port
+    /// is re-opened there too. Native RtMidi enumerate/open/close calls can block
+    /// for a noticeable stretch during a hotplug transition, so none of this runs
+    /// on the main thread — doing so previously could stall or hang the editor.
+    /// `_output` is only ever swapped under `_lock`, so a send from the main thread
+    /// and a reopen from the poll thread can never race on the same handle.
     /// </summary>
     public class MidiFighterOutput : MonoBehaviour
     {
@@ -80,12 +86,20 @@ namespace MidiFighter64
         [Tooltip("Send Note Off (velocity 0) to all 64 pads immediately after connecting, clearing any LED state left over from a previous session.")]
         [SerializeField] bool _clearOnStart = true;
 
+        [Tooltip("If no port with \"Fighter\" in its name is found, fall back to the first available MIDI output port. " +
+                 "Off by default: with a synth, DAW, or virtual port and no MF64 attached, an enabled fallback sends LED " +
+                 "data (and ClearOnStart's note-off burst) to whatever that unrelated device is.")]
+        [SerializeField] bool _allowFallbackPort = false;
+
         const float PORT_POLL_INTERVAL = 1.0f; // seconds between hotplug checks
+
+        readonly object _lock = new object();
 
         MidiOut _probe;
         MidiOut _output;
-        int     _lastPortCount    = -1;
-        float   _nextPortPollTime;
+        int     _lastPortCount = -1;
+        volatile bool _running;
+        Thread  _pollThread;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() => Instance = null;
@@ -99,27 +113,15 @@ namespace MidiFighter64
         void Start()
         {
             _probe = MidiOut.Create();
-            _lastPortCount     = _probe.PortCount;
-            _nextPortPollTime  = Time.unscaledTime + PORT_POLL_INTERVAL;
-            TryOpenPort();
-            if (_clearOnStart) ClearAllLEDs();
-        }
-
-        void Update()
-        {
-            if (_probe == null || _probe.IsInvalid) return;
-            if (Time.unscaledTime < _nextPortPollTime) return;
-            _nextPortPollTime = Time.unscaledTime + PORT_POLL_INTERVAL;
-
-            int count = _probe.PortCount;
-            if (count == _lastPortCount) return;
-            _lastPortCount = count;
-            CloseOutput();
-            TryOpenPort();
+            _running = true;
+            _pollThread = new Thread(PollLoop) { IsBackground = true, Name = "MidiFighterOutput.Poll" };
+            _pollThread.Start();
         }
 
         void OnDestroy()
         {
+            _running = false;
+            if (_pollThread != null && _pollThread.IsAlive) _pollThread.Join(2000);
             try { if (_clearOnStart) ClearAllLEDs(); } catch { }
             try { CloseOutput(); } catch { }
             try { if (_probe != null && !_probe.IsInvalid) _probe.Dispose(); } catch { }
@@ -128,58 +130,119 @@ namespace MidiFighter64
         }
 
         // ------------------------------------------------------------------
+        // Background thread: all hotplug enumeration/open/close happens here.
+        // ------------------------------------------------------------------
+
+        void PollLoop()
+        {
+            try { _lastPortCount = _probe.PortCount; } catch { _lastPortCount = -1; }
+            TryOpenPort();
+            if (_clearOnStart) ClearAllLEDs();
+
+            while (_running)
+            {
+                // Sleep in short increments so OnDestroy's Join(2000) returns promptly
+                // instead of waiting out the full poll interval.
+                for (int waited = 0; waited < PORT_POLL_INTERVAL * 1000 && _running; waited += 100)
+                    Thread.Sleep(100);
+                if (!_running) break;
+                if (_probe == null || _probe.IsInvalid) continue;
+
+                int count;
+                try { count = _probe.PortCount; } catch { continue; }
+                if (count == _lastPortCount) continue;
+                _lastPortCount = count;
+
+                CloseOutput();
+                TryOpenPort();
+            }
+        }
 
         void TryOpenPort()
         {
             if (_probe == null || _probe.IsInvalid) return;
-            int count = _probe.PortCount;
+            int count;
+            try { count = _probe.PortCount; } catch { return; }
 
             for (int i = 0; i < count; i++)
             {
-                string name = _probe.GetPortName(i);
-                if (name != null &&
-                    name.IndexOf("Fighter", StringComparison.OrdinalIgnoreCase) >= 0)
+                string name;
+                try { name = _probe.GetPortName(i); } catch { continue; }
+                if (name != null && name.IndexOf("Fighter", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    _output = MidiOut.Create();
-                    _output.OpenPort(i);
-                    Debug.Log($"[MidiFighterOutput] Opened: {name}");
+                    OpenAndAssign(i, name);
                     return;
                 }
             }
 
-            // Fallback to first available output if Midi Fighter not found by name
-            if (count > 0)
+            if (count == 0)
             {
-                _output = MidiOut.Create();
-                _output.OpenPort(0);
-                Debug.Log($"[MidiFighterOutput] Midi Fighter not found — using first available: {_probe.GetPortName(0)}");
+                Debug.LogWarning("[MidiFighterOutput] No MIDI output device found. LEDs will not respond.");
+            }
+            else if (_allowFallbackPort)
+            {
+                string name = null;
+                try { name = _probe.GetPortName(0); } catch { }
+                OpenAndAssign(0, name);
+                Debug.Log($"[MidiFighterOutput] Midi Fighter not found — using first available: {name}");
             }
             else
             {
-                Debug.LogWarning("[MidiFighterOutput] No MIDI output device found. LEDs will not respond.");
+                Debug.LogWarning("[MidiFighterOutput] Midi Fighter not found among MIDI outputs (fallback port disabled). LEDs will not respond.");
+            }
+        }
+
+        void OpenAndAssign(int index, string name)
+        {
+            try
+            {
+                var output = MidiOut.Create();
+                output.OpenPort(index);
+                lock (_lock) { _output = output; }
+                Debug.Log($"[MidiFighterOutput] Opened: {name}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[MidiFighterOutput] Failed to open port {index} ({name}): {e.Message}");
             }
         }
 
         void CloseOutput()
         {
-            if (_output != null && !_output.IsInvalid)
+            MidiOut old;
+            lock (_lock) { old = _output; _output = null; }
+            if (old != null && !old.IsInvalid)
             {
-                _output.ClosePort();
-                _output.Dispose();
+                try { old.ClosePort(); } catch { }
+                try { old.Dispose(); } catch { }
             }
-            _output = null;
         }
 
         void SendNoteOn(int channelIndex, int note, int velocity)
         {
-            if (_output == null || _output.IsInvalid) return;
-            Span<byte> msg = stackalloc byte[]
+            MidiOut output;
+            lock (_lock) { output = _output; }
+            if (output == null || output.IsInvalid) return;
+
+            try
             {
-                (byte)(0x90 | (channelIndex & 0x0F)),
-                (byte)(note     & 0x7F),
-                (byte)(velocity & 0x7F)
-            };
-            _output.SendMessage(msg);
+                Span<byte> msg = stackalloc byte[]
+                {
+                    (byte)(0x90 | (channelIndex & 0x0F)),
+                    (byte)(note     & 0x7F),
+                    (byte)(velocity & 0x7F)
+                };
+                output.SendMessage(msg);
+            }
+            catch (Exception e)
+            {
+                // A native throw here would otherwise unwind into whatever static
+                // event invoked us (e.g. OnMute), aborting any subscribers still
+                // queued after us. Swallow it and drop the port so the next poll
+                // reopens it instead.
+                Debug.LogWarning($"[MidiFighterOutput] LED send failed, will reopen on next poll: {e.Message}");
+                CloseOutput();
+            }
         }
 
         // ------------------------------------------------------------------
@@ -200,7 +263,7 @@ namespace MidiFighter64
             => SendNoteOn(ledChannelIndex, noteNumber, (int)color);
 
         /// <summary>True once the MF64 output port is open and writes will actually reach the hardware.</summary>
-        public bool IsReady => _output != null && !_output.IsInvalid;
+        public bool IsReady { get { lock (_lock) { return _output != null && !_output.IsInvalid; } } }
 
         /// <summary>Sends the same velocity to every one of the 64 pads.</summary>
         public void SetAllLEDs(int velocity)

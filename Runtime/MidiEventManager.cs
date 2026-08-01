@@ -78,6 +78,13 @@ namespace MidiFighter64
         {
             if (Instance != null && Instance != this)
             {
+                // Destroys the whole GameObject, not just this component. On the
+                // shipped prefab that GameObject also carries the routers, both
+                // Output components, and the status drawer, so a second rig
+                // (per-scene, additively loaded, etc.) loses all of them, not
+                // just the manager. This package assumes exactly one rig; if you
+                // need per-scene rigs, split MidiEventManager onto its own
+                // GameObject away from the other seven components.
                 Destroy(gameObject);
                 return;
             }
