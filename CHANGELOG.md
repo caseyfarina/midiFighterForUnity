@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Knob fisheye** *(linear only)* — the last-touched MIDI Mix knob grows while its row/column neighbours in the knob grid distort to compensate, constrained to the knob grid's own bounding box like the MF64 pad fisheye. `Enable Knob Fisheye` (default on) and `Knob Fisheye Scale` (1–6, default 3) on `MidiStatusDrawer`, runtime equivalents `EnableKnobFisheye` / `KnobFisheyeScale`. The **focused knob is held perfectly round and only grows** — the knob you're adjusting never distorts — while its neighbours warp into ellipses. The warp is continuous (round at rest, elliptical under focus, no pop) and there is no resting distortion despite the knob grid being wider than tall. No effect in radial layouts, like the pad fisheye.
+- **`KnobWidget`** — abstract base (`Value`, `SetInk`, `StrokeScale`, plus `KeepRound` and `NeutralAspect` for the fisheye warp) for any knob visual the drawer can show. `KnobDisplay` is now the shipped implementation of it. The drawer names a concrete design in exactly one place, `MidiStatusDrawer.MakeKnob()`, and themes knobs by the base type, so a new knob design is a drop-in: subclass `KnobWidget`, fill the cell, return it from the factory. `KeepRound` / `NeutralAspect` default to round, so a design that doesn't distort can ignore them.
+
+### Changed
+- **The 24 MIDI Mix knobs are now their own 3×8 flex grid**, a wide sibling of the MF64 pad grid, rather than being stacked at the top of each channel strip. This is what lets the knob fisheye redistribute inside a fixed box without shoving the faders. The knob grid, control columns, and pad grid all share the identical 8-column flex + margins, so their columns stay aligned; the grid's fixed height equals the old knob stack, so `MixSectionHeight` is unchanged. Knobs fill their cell (flex) instead of a hard-coded `KnobSize`, but at rest still draw at `KnobSize` because they size to the shorter axis.
+- **The fisheye implementation is a single shared core** (`ApplyFisheye`) driven by both the pad grid (8×8) and the knob grid (3×8). It only ever touches row containers and cell elements, never the widget inside, which is why it works for pads and any knob design alike.
+- **The knob ring shows 22 dots** (was 31), ~30% fewer, for a lighter read at the drawer's scale.
+
 ## [2.3.0] — 2026-08-01
 
 ### Fixed

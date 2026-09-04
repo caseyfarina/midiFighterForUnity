@@ -21,6 +21,7 @@ namespace MidiFighter64.Editor
         SerializedProperty _placement, _screenFraction;
         SerializedProperty _showMf64, _showMidiMix;
         SerializedProperty _enableMf64Fisheye, _mf64FisheyeScale;
+        SerializedProperty _enableKnobFisheye, _knobFisheyeScale;
         SerializedProperty _radialVerticalOffset, _radialMessagePadding;
         SerializedProperty _radialPadScale, _radialRingSpread, _radialPadRotation;
         SerializedProperty _enableFunctionKeys, _logLayoutDiagnostics;
@@ -40,6 +41,8 @@ namespace MidiFighter64.Editor
             _showMidiMix          = serializedObject.FindProperty("_showMidiMix");
             _enableMf64Fisheye    = serializedObject.FindProperty("_enableMf64Fisheye");
             _mf64FisheyeScale     = serializedObject.FindProperty("_mf64FisheyeScale");
+            _enableKnobFisheye    = serializedObject.FindProperty("_enableKnobFisheye");
+            _knobFisheyeScale     = serializedObject.FindProperty("_knobFisheyeScale");
             _radialVerticalOffset = serializedObject.FindProperty("_radialVerticalOffset");
             _radialMessagePadding = serializedObject.FindProperty("_radialMessagePadding");
             _radialPadScale       = serializedObject.FindProperty("_radialPadScale");
@@ -99,6 +102,13 @@ namespace MidiFighter64.Editor
                 {
                     EditorGUILayout.PropertyField(_mf64FisheyeScale, new GUIContent("Fisheye Scale"));
                     EditorGUILayout.LabelField(" ", "Growth weight of the focused row/column  ·  1 = no growth", EditorStyles.miniLabel);
+                }
+
+                EditorGUILayout.PropertyField(_enableKnobFisheye, new GUIContent("Enable Knob Fisheye"));
+                using (new EditorGUI.DisabledScope(!_enableKnobFisheye.boolValue))
+                {
+                    EditorGUILayout.PropertyField(_knobFisheyeScale, new GUIContent("Knob Fisheye Scale"));
+                    EditorGUILayout.LabelField(" ", "The last-touched MIDI Mix knob grows within the knob grid's box  ·  1 = no growth", EditorStyles.miniLabel);
                 }
                 if (isRadial)
                     EditorGUILayout.LabelField(" ", "Fisheye is flex-grow based and does not apply to radial", EditorStyles.miniLabel);

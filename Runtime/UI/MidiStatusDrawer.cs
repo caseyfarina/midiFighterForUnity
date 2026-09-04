@@ -99,6 +99,45 @@ namespace MidiFighter64
             }
         }
 
+        [Tooltip("If enabled, the last-touched MIDI Mix knob grows (fisheye focus) while its " +
+                 "row/column neighbours in the knob grid deform to compensate. Constrained to " +
+                 "the knob grid's own bounding box, exactly like the MF64 pad fisheye. Linear only.")]
+        [SerializeField] bool _enableKnobFisheye = true;
+
+        [Tooltip("How far the focused knob grows. Like MF64 Fisheye Scale it's a flex-grow " +
+                 "weight, not a pixel size: 1 = no growth, 3 = the focused knob row/column takes " +
+                 "3 shares to the others' 1. Because only the touched knob sits at the crossing " +
+                 "of a grown row and column, it is the only one that actually magnifies.")]
+        [Range(1f, 6f)]
+        [SerializeField] float _knobFisheyeScale = 3f;
+
+        public bool EnableKnobFisheye
+        {
+            get => _enableKnobFisheye;
+            set
+            {
+                if (_enableKnobFisheye == value) return;
+                _enableKnobFisheye = value;
+                if (!value) ClearKnobFocus();
+            }
+        }
+
+        /// <summary>Growth weight of the focused knob's row/column, 1–6. 1 disables the
+        /// visible effect without turning the feature off.</summary>
+        public float KnobFisheyeScale
+        {
+            get => _knobFisheyeScale;
+            set
+            {
+                float v = Mathf.Clamp(value, 1f, 6f);
+                if (Mathf.Approximately(_knobFisheyeScale, v)) return;
+                _knobFisheyeScale = v;
+                // Live-update a knob focused right now, matching the MF64 slider.
+                if (_knobFocusRow >= 0 && _knobFocusCol >= 0)
+                    FocusKnob(_knobFocusCol, _knobFocusRow);
+            }
+        }
+
         [Tooltip("Show the Midi Fighter 64 pad grid. Turn off when working with the MIDI Mix alone.")]
         [SerializeField] bool _showMf64 = true;
 
@@ -150,7 +189,8 @@ namespace MidiFighter64
 
             public PadCell[]          pads       = new PadCell[64];  // linearIndex → cell
             public VisualElement[]    mf64Rows   = new VisualElement[8]; // row containers for fisheye scaling
-            public KnobDisplay[,]     knobs      = new KnobDisplay[8, 3];
+            public KnobWidget[,]      knobs      = new KnobWidget[8, 3];  // [channel, row]
+            public VisualElement[]    knobRows   = new VisualElement[3];  // knob-grid row containers for fisheye
             public VisualElement[]    faderBars   = new VisualElement[8];
             public VisualElement[]    faderTracks = new VisualElement[8]; // opacity target for "seen" flip
             public VisualElement      masterFaderBar;
@@ -234,6 +274,7 @@ namespace MidiFighter64
                 // Fisheye focus is flex-grow based and meaningless off Linear1;
                 // clear it so a stale focus can't be re-applied after the switch.
                 ClearMf64Focus();
+                ClearKnobFocus();
                 RebuildIfLive();
             }
         }
@@ -744,6 +785,13 @@ namespace MidiFighter64
         const int   FocusHoldMs = 800;   // toggle mode: keep focused this long
         int _focusRow = -1, _focusCol = -1;
         IVisualElementScheduledItem _focusClearTimer;
+
+        // Knob fisheye focus. Separate state from the pad grid because the two
+        // grids are focused by independent events (pad press vs knob turn), but
+        // both drive the same shared ApplyFisheye core. _knobFocusCol is the
+        // channel (0-7), _knobFocusRow the knob row (0-2).
+        int _knobFocusRow = -1, _knobFocusCol = -1;
+        IVisualElementScheduledItem _knobFocusClearTimer;
         // ─── Unity lifecycle ──────────────────────────────────────────────
         void Awake()
         {
@@ -778,6 +826,13 @@ namespace MidiFighter64
 
         void OnEnable()
         {
+            // Added after the initial ship, so on scenes/prefab instances saved before
+            // it existed the field deserializes to 0 — outside the legal 1–6 range, and
+            // a 0 weight would collapse the focused knob row/column. Guard it (see the
+            // serialization note in the package CLAUDE.md). _enableKnobFisheye is a bool,
+            // so its false-on-old-instances is a legitimate value and needs no guard.
+            if (_knobFisheyeScale <= 0f) _knobFisheyeScale = 3f;
+
             // Must precede BuildAllViews: BuildMf64Section reads _btnRouter.Config to
             // decide each pad's Button/Toggle mode, so finding the router afterwards
             // built every cell as Button no matter how the grid was configured.
@@ -886,7 +941,8 @@ namespace MidiFighter64
                     l.style.backgroundColor = p.MessageBg;
                     l.style.color           = p.MessageText;
                 });
-                v.root.Query<KnobDisplay>().ForEach(k =>
+                // By the base type, not KnobDisplay, so any knob design lands here.
+                v.root.Query<KnobWidget>().ForEach(k =>
                 {
                     k.SetInk(p.Ink, p.TickOff, p.PadStroke);
                     k.StrokeScale = _strokeWeight;
@@ -1066,16 +1122,23 @@ namespace MidiFighter64
             if (cell != null)
                 sb.AppendLine($"  pad cell         {cell.resolvedStyle.width:0.##}x{cell.resolvedStyle.height:0.##}   <- must be square, else pads render elliptical");
 
-            // Mix strips must span the same width as the grid or the 8 columns drift.
-            var strip = v.knobs[0, 0]?.parent;
-            var stripsRow = strip?.parent;
+            // The knob grid and the control columns must both span the grid width,
+            // or their 8 columns drift out of line with the pad grid. Measure the
+            // control column (a mute pad's parent) against a pad cell, and the two
+            // full-width rows against the grid.
+            var knobRow   = v.knobRows[0];
+            var strip     = v.mutes[0]?.parent;         // one channel's control column
+            var stripsRow = strip?.parent;              // the row of 8 control columns
+            if (knobRow != null && grid != null)
+                sb.AppendLine($"  knob grid row    {knobRow.resolvedStyle.width:0.#}   vs grid {grid.resolvedStyle.width:0.#}   <- must match");
             if (stripsRow != null && grid != null)
-                sb.AppendLine($"  strips row       {stripsRow.resolvedStyle.width:0.#}   vs grid {grid.resolvedStyle.width:0.#}   <- must match");
+                sb.AppendLine($"  controls row     {stripsRow.resolvedStyle.width:0.#}   vs grid {grid.resolvedStyle.width:0.#}   <- must match");
             if (strip != null && cell != null)
-                sb.AppendLine($"  strip width      {strip.resolvedStyle.width:0.##}  vs cell {cell.resolvedStyle.width:0.##}   <- must match");
+                sb.AppendLine($"  control column   {strip.resolvedStyle.width:0.##}  vs cell {cell.resolvedStyle.width:0.##}   <- must match");
 
-            // MixSectionHeight is hand-summed; this is how to correct it.
-            var mixSection = stripsRow?.parent;
+            // MixSectionHeight is hand-summed; this is how to correct it. The knob
+            // grid's parent is the mix section (knobRow → knobsGrid → section).
+            var mixSection = knobRow?.parent?.parent;
             if (mixSection != null)
                 sb.AppendLine($"  mix section h    {mixSection.resolvedStyle.height:0.#}   <- MixSectionHeight const is {MixSectionHeight}");
 
@@ -1089,6 +1152,10 @@ namespace MidiFighter64
             _focusClearTimer?.Pause();
             _focusClearTimer = null;
             _focusRow = _focusCol = -1;
+
+            _knobFocusClearTimer?.Pause();
+            _knobFocusClearTimer = null;
+            _knobFocusRow = _knobFocusCol = -1;
 
             foreach (var v in _views)
             {
@@ -1537,13 +1604,68 @@ namespace MidiFighter64
 
             // Sizes come from the class-level constants above so the height
             // budget stays in sync — see MixSectionHeight.
-            const float KNOB_SIZE    = KnobSize;
             const float PAD_SIZE     = MixPadSize;
             const float FADER_WIDTH  = FaderWidth;
             const float FADER_HEIGHT = FaderHeight;
 
-            // 8 channel strips, identical width — every widget in channel N shares
-            // the same horizontal center automatically.
+            // ── Knob grid ────────────────────────────────────────────────────
+            // The 24 knobs are their own 3-row × 8-column flex grid, structurally a
+            // wide sibling of the MF64 pad grid, so the knob fisheye redistributes
+            // inside this fixed box and never shoves the faders below. Its columns
+            // use the identical flex + margin as the pad cells and the control
+            // columns, keeping all three sets of 8 columns aligned.
+            //
+            // Fixed height = the old three-knobs-plus-gaps stack, so the mix section
+            // is exactly as tall as before and MixSectionHeight needs no change. At
+            // rest each row is (KnobSize + KnobGap) tall and each cell wider than
+            // that, so the knob draws at KnobSize (it sizes to min(w,h)) — same look
+            // as the previous fixed-size knobs.
+            var knobsGrid = new VisualElement();
+            knobsGrid.style.flexDirection = FlexDirection.Column;
+            knobsGrid.style.alignSelf = Align.Stretch;
+            knobsGrid.style.height = 3f * (KnobSize + KnobGap);
+            knobsGrid.style.flexShrink = 0;   // never compress; keep the fisheye box fixed
+            knobsGrid.pickingMode = PickingMode.Ignore;
+
+            // Resting cell aspect: column width (8 flex columns across the grid) over
+            // row height (the knob element height). A distorting knob divides by this
+            // so it reads round at rest despite the grid being wider than it is tall.
+            float knobNeutralAspect = ((GridSide - 8f * CellMargin) / 8f) / KnobSize;
+
+            for (int rowIdx = 0; rowIdx < 3; rowIdx++)
+            {
+                var rowEl = new VisualElement();
+                rowEl.style.flexDirection = FlexDirection.Row;
+                rowEl.style.flexGrow = 1;
+                rowEl.style.flexBasis = 0;
+                rowEl.style.transitionProperty = new List<StylePropertyName> { new StylePropertyName("flex-grow") };
+                view.knobRows[rowIdx] = rowEl;
+
+                for (int ch = 0; ch < 8; ch++)
+                {
+                    var knob = MakeKnob();
+                    // Fill the cell rather than a fixed size, so growing the cell
+                    // grows the knob — the whole basis of the fisheye. Same flex +
+                    // margin as the pad cells so the columns line up.
+                    knob.style.flexGrow = 1;
+                    knob.style.flexBasis = 0;
+                    knob.style.marginRight = CellMargin;
+                    knob.style.marginBottom = KnobGap;
+                    knob.style.opacity = SeenScale(_knobsSeen[ch, rowIdx]);
+                    knob.style.transitionProperty = new List<StylePropertyName> { new StylePropertyName("flex-grow") };
+                    knob.NeutralAspect = knobNeutralAspect;
+                    view.knobs[ch, rowIdx] = knob;
+                    rowEl.Add(knob);
+                }
+                knobsGrid.Add(rowEl);
+            }
+            section.Add(knobsGrid);
+
+            // ── Control columns ──────────────────────────────────────────────
+            // Mute / rec-arm / fader, one column per channel. Same 8-column flex as
+            // the knob grid and pad grid above, so the channels stay aligned. The
+            // knobs used to live at the top of these columns; splitting them out is
+            // what lets the knob fisheye stay inside the knob grid's box.
             var stripsRow = new VisualElement();
             stripsRow.style.flexDirection = FlexDirection.Row;
             stripsRow.style.alignSelf = Align.Stretch;
@@ -1558,17 +1680,6 @@ namespace MidiFighter64
                 strip.style.flexGrow = 1;
                 strip.style.flexBasis = 0;
                 strip.style.marginRight = CellMargin;
-
-                for (int rowIdx = 0; rowIdx < 3; rowIdx++)
-                {
-                    var knob = new KnobDisplay();
-                    knob.style.width = KNOB_SIZE;
-                    knob.style.height = KNOB_SIZE;
-                    knob.style.marginBottom = KnobGap;
-                    knob.style.opacity = SeenScale(_knobsSeen[ch, rowIdx]);
-                    view.knobs[ch, rowIdx] = knob;
-                    strip.Add(knob);
-                }
 
                 var mute = MakeSizedPad(PadCell.Mode.Toggle, Colors.Ink, PAD_SIZE);
                 mute.style.marginBottom = 4;
@@ -1655,6 +1766,17 @@ namespace MidiFighter64
 
             return section;
         }
+
+        /// <summary>
+        /// Builds one knob widget. This is the *only* place the drawer names a
+        /// concrete <see cref="KnobWidget"/> design — swap the line below (or branch
+        /// it on a future setting) to change the knob look everywhere. The caller
+        /// sizes it by flex, so a design must fill its cell and draw to
+        /// <c>min(width,height)</c>; see <see cref="KnobWidget"/> for the contract.
+        /// Ink and stroke weight are applied by the <see cref="ApplyTheme"/> pass at
+        /// the end of <see cref="BuildAllViews"/>, so nothing to set here.
+        /// </summary>
+        KnobWidget MakeKnob() => new KnobDisplay();
 
         PadCell MakeSizedPad(PadCell.Mode mode, Color fill, float size)
         {
@@ -1879,6 +2001,42 @@ namespace MidiFighter64
         static readonly List<EasingFunction> FocusInEase  = new() { new EasingFunction(EasingMode.EaseOutCubic) };
         static readonly List<EasingFunction> FocusOutEase = new() { new EasingFunction(EasingMode.EaseOutCirc) };
 
+        /// <summary>
+        /// Shared fisheye core. Grows the focused cell's row (via the row container's
+        /// flex-grow, i.e. height) and its column (via each cell's flex-grow, i.e.
+        /// width) inside a fixed-size grid, so neighbours shrink to pay for it and
+        /// the effect never leaves the grid's box. Design-agnostic: it only ever
+        /// touches the row containers and the cell elements, never the widget drawn
+        /// inside, so pads and any knob design ride the same code. Pass
+        /// <paramref name="focusRow"/> / <paramref name="focusCol"/> as -1 to clear.
+        /// </summary>
+        static void ApplyFisheye(
+            VisualElement[] rowContainers,
+            System.Func<int, int, VisualElement> cellAt,
+            int rows, int cols,
+            int focusRow, int focusCol, float scale,
+            List<TimeValue> duration, List<EasingFunction> ease)
+        {
+            for (int r = 0; r < rows; r++)
+            {
+                var rowEl = rowContainers[r];
+                if (rowEl != null)
+                {
+                    rowEl.style.transitionDuration = duration;
+                    rowEl.style.transitionTimingFunction = ease;
+                    rowEl.style.flexGrow = (r == focusRow) ? scale : 1f;
+                }
+                for (int c = 0; c < cols; c++)
+                {
+                    var cell = cellAt(r, c);
+                    if (cell == null) continue;
+                    cell.style.transitionDuration = duration;
+                    cell.style.transitionTimingFunction = ease;
+                    cell.style.flexGrow = (c == focusCol) ? scale : 1f;
+                }
+            }
+        }
+
         void FocusMf64Pad(int row1Based, int col1Based)
         {
             // Fisheye is flex-grow on the row containers, which only exist in Linear1;
@@ -1886,60 +2044,20 @@ namespace MidiFighter64
             // every call site keeps the press handlers layout-agnostic.
             if (IsRadial) return;
 
-            int activeRow = row1Based - 1;
-            int activeCol = col1Based - 1;
-            _focusRow = activeRow;
-            _focusCol = activeCol;
-
+            _focusRow = row1Based - 1;
+            _focusCol = col1Based - 1;
             foreach (var v in _views)
-            {
-                for (int r = 0; r < 8; r++)
-                {
-                    var rowEl = v.mf64Rows[r];
-                    if (rowEl != null)
-                    {
-                        rowEl.style.transitionDuration = FocusInDuration;
-                        rowEl.style.transitionTimingFunction = FocusInEase;
-                        rowEl.style.flexGrow = (r == activeRow) ? _mf64FisheyeScale : 1f;
-                    }
-                    for (int c = 0; c < 8; c++)
-                    {
-                        var cell = v.pads[r * 8 + c];
-                        if (cell == null) continue;
-                        cell.style.transitionDuration = FocusInDuration;
-                        cell.style.transitionTimingFunction = FocusInEase;
-                        cell.style.flexGrow = (c == activeCol) ? _mf64FisheyeScale : 1f;
-                    }
-                }
-            }
+                ApplyFisheye(v.mf64Rows, (r, c) => v.pads[r * 8 + c], 8, 8,
+                             _focusRow, _focusCol, _mf64FisheyeScale, FocusInDuration, FocusInEase);
         }
 
         void ClearMf64Focus()
         {
             if (_focusRow < 0 && _focusCol < 0) return;
             _focusRow = _focusCol = -1;
-
             foreach (var v in _views)
-            {
-                for (int r = 0; r < 8; r++)
-                {
-                    var rowEl = v.mf64Rows[r];
-                    if (rowEl != null)
-                    {
-                        rowEl.style.transitionDuration = FocusOutDuration;
-                        rowEl.style.transitionTimingFunction = FocusOutEase;
-                        rowEl.style.flexGrow = 1f;
-                    }
-                    for (int c = 0; c < 8; c++)
-                    {
-                        var cell = v.pads[r * 8 + c];
-                        if (cell == null) continue;
-                        cell.style.transitionDuration = FocusOutDuration;
-                        cell.style.transitionTimingFunction = FocusOutEase;
-                        cell.style.flexGrow = 1f;
-                    }
-                }
-            }
+                ApplyFisheye(v.mf64Rows, (r, c) => v.pads[r * 8 + c], 8, 8,
+                             -1, -1, 1f, FocusOutDuration, FocusOutEase);
         }
 
         void ScheduleFocusClear(int delayMs)
@@ -1951,6 +2069,52 @@ namespace MidiFighter64
             if (anchor == null) return;
             _focusClearTimer = anchor.schedule.Execute(ClearMf64Focus);
             _focusClearTimer.ExecuteLater(delayMs);
+        }
+
+        // ─── Knob fisheye ────────────────────────────────────────────────
+        // Same flex core as the pad grid, over the 3×8 knob grid, indexed
+        // [channel, row]; the fisheye's (row, col) maps to (knob row, channel), so
+        // cellAt(r, c) = knobs[c, r]. Unlike the pads, the *focused* knob is held
+        // perfectly round (KeepRound) — it grows but never distorts — while its
+        // neighbours warp into ellipses to absorb the growth. At rest every cell is
+        // back to its resting aspect, where KeepRound on or off both draw round, so
+        // flipping the flag is never visible; that's why the clear path can leave the
+        // flags alone and only FocusKnob reassigns them.
+        void FocusKnob(int channel0, int knobRow0)
+        {
+            if (IsRadial || !_showMidiMix) return;
+
+            _knobFocusCol = channel0;
+            _knobFocusRow = knobRow0;
+            foreach (var v in _views)
+            {
+                ApplyFisheye(v.knobRows, (r, c) => v.knobs[c, r], 3, 8,
+                             _knobFocusRow, _knobFocusCol, _knobFisheyeScale, FocusInDuration, FocusInEase);
+
+                for (int c = 0; c < 8; c++)
+                    for (int r = 0; r < 3; r++)
+                        if (v.knobs[c, r] != null)
+                            v.knobs[c, r].KeepRound = (c == channel0 && r == knobRow0);
+            }
+        }
+
+        void ClearKnobFocus()
+        {
+            if (_knobFocusRow < 0 && _knobFocusCol < 0) return;
+            _knobFocusRow = _knobFocusCol = -1;
+            foreach (var v in _views)
+                ApplyFisheye(v.knobRows, (r, c) => v.knobs[c, r], 3, 8,
+                             -1, -1, 1f, FocusOutDuration, FocusOutEase);
+        }
+
+        void ScheduleKnobFocusClear(int delayMs)
+        {
+            _knobFocusClearTimer?.Pause();
+            VisualElement anchor = null;
+            foreach (var v in _views) { if (v.drawer != null) { anchor = v.drawer; break; } }
+            if (anchor == null) return;
+            _knobFocusClearTimer = anchor.schedule.Execute(ClearKnobFocus);
+            _knobFocusClearTimer.ExecuteLater(delayMs);
         }
 
         /// <summary>
@@ -2004,6 +2168,14 @@ namespace MidiFighter64
                     arc.SetValue(value);
                     if (!wasSeen) arc.style.opacity = SeenScale(true);
                 }
+            }
+            // A knob has no release, so hold like the toggle path: each event while
+            // turning re-focuses and pushes the clear out, so it stays grown mid-turn
+            // and eases back once the knob settles.
+            if (_enableKnobFisheye)
+            {
+                FocusKnob(ch, r);
+                ScheduleKnobFocusClear(FocusHoldMs);
             }
             SetMessage($"Mix Knob R{row} Ch{channel}  {value:0.00}");
         }
