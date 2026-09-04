@@ -40,9 +40,9 @@ What was there and where it went:
 
 ## Testing
 
-EditMode tests live in `Tests/Editor/MidiFighter64InputMapTests.cs`. Run via **Window → General → Test Runner → EditMode → Run All**.
+EditMode tests live in `Tests/Editor/`: `MidiFighter64InputMapTests.cs` (grid note ↔ row/col) and `MidiMixInputMapTests.cs` (MIDI Mix CC/note maps). Run via **Window → General → Test Runner → EditMode → Run All**, or headlessly through the Unity CLI (see *Verifying changes* below).
 
-Current test count: 22 (14 corners + 8 `ToNote`/round-trip).
+Current test count: 50, across both suites.
 
 Adding tests: any new public method on a static/pure class should have a corner case + a round-trip test.
 
@@ -58,17 +58,36 @@ DJ TechTools firmware history: https://techtools.zendesk.com/hc/en-us/articles/1
 
 ---
 
-## Verifying changes (no Coplay in this project)
+## Verifying changes (Unity CLI)
 
-The `coplay-mcp` tools are listed but the Unity-side package **is not installed here** — every call fails with "Unity Editor is not running at the specified project root", even though `list_unity_project_roots` reports the project as open. Don't chase it.
+Verification goes through the **Unity CLI** (`unity`, global — works in any Unity project on this machine) driving the **already-open editor** via the **Pipeline package** (`com.unity.pipeline`, in this project's manifest). This replaced the old Coplay MCP / Editor.log-grep approach.
 
-To check whether a change compiled, read Unity's editor log:
+Run everything from the project root:
 
+```bash
+# compile check — a CS error lands in .errors[], no log grepping
+unity command recompile
+unity command recompile_status          # { failed, errors[] }
+
+# tests (50 EditMode)
+unity command list_tests
+unity command run_tests
+unity command test_status
+
+# read the console directly
+unity command get_console_logs
+
+# confirm the editor is connected
+unity status                            # state: ready
+unity pipeline list                     # Server Reachable: true
 ```
-C:\Users\casey\AppData\Local\Unity\Editor\Editor.log
-```
 
-`grep "error CS"` for compile failures; the tail carries runtime `Debug.Log` output and stack traces from the last play session, which is enough to trace a bad code path. The log reflects Unity's **last** compile, so trigger a recompile (tab into the editor) before trusting it.
+Gotchas:
+
+- **Don't use batch `unity test` / `unity build` while the editor is open** — they spawn their own editor and abort on the project lock (`another Unity instance is running`). The `unity command …` path talks to the warm editor instead, so no lock fight.
+- After `unity pipeline install`, the editor's HTTP server (port ~7800) only starts once the editor **regains focus** and imports the package (Unity defers import while unfocused). Click into Unity once; `Server Reachable` flips to true.
+- `unity list` / `unity command` with no args enumerate every command the live editor exposes; `unity --help` lists the CLI's own commands (far more than the published web reference).
+- Unity also ships an official editor MCP (`unity mcp configure claude`) — a fuller Coplay replacement — but this project stays pure-CLI by choice.
 
 ---
 
