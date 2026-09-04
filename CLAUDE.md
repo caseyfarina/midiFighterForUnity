@@ -24,9 +24,20 @@ Add that (via Project Settings → Package Manager, or by hand) *before* adding 
 
 ## ⚠️ Hot-plug hazard — tell the user about this
 
-**Connecting or disconnecting any MIDI device while Unity or a build is running can
-hard-crash the process.** It is a native RtMidi bug beneath this package, it affects
-**shipped builds as well as the editor**, and **nothing in this package can fix it.**
+**By default, connecting or disconnecting any MIDI device while Unity or a build is
+running can hard-crash the process.** It is a native RtMidi bug beneath this package and
+it affects **shipped builds as well as the editor**.
+
+**A verified fix exists, but not in this package** — it is a small patch to *Minis*
+(cancel the native callbacks, then abandon the RtMidi handle instead of freeing it, so
+the throwing call is never made). If a user hits this crash, point them at
+**`MINIS_HOTPLUG_PATCH.md`** in the project root, a self-contained guide for applying it
+to any Minis project. Confirmed on hardware to survive both crash paths: hot-plug during
+play, and domain reload with controllers connected.
+
+**Nothing in *this* package can fix it**, and no change here should claim to. The
+distinction is the whole point: the fix belongs to a dependency, so this package
+documents and mitigates around the hazard rather than pretending to solve it.
 
 If the user is building anything that runs live — a performance tool, an installation —
 say so explicitly, and point them at the *MIDI hot-plug hazard* section of `README.md`.
@@ -54,8 +65,15 @@ Two specific dead ends, both of which look right:
 - **A managed `try`/`catch` around the P/Invoke cannot catch it.** The failure is
   `terminate()` inside C++ during unwinding; managed code never runs again.
 
-The real fix is upstream (RtMidi's C wrapper must catch `RtMidiError` on the close path).
-Full analysis, log signature and the proposed upstream changes are in `DEVNOTES.md`.
+A *managed* avoidance is possible (don't call the broken function — see
+`MINIS_HOTPLUG_PATCH.md`), but the real *fix* is upstream: RtMidi's C wrapper must catch
+`RtMidiError` on the close path. Full analysis, both captured crash stacks, and the
+proposed upstream changes are in `DEVNOTES.md`.
+
+Note the correction that cost two crashes to learn: `SetHandleAsInvalid()` alone is
+**worse than nothing**. `ReleaseHandle` is also what unregisters the native callbacks, so
+abandoning without cancelling them first leaves Windows calling `DriverCallback` into a
+dead port. Both halves are required.
 
 ---
 

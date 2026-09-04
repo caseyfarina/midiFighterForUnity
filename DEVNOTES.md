@@ -235,6 +235,53 @@ handle is disposed on any count change, in either direction, from any source —
 another application creating or destroying a virtual port. For a live-performance tool
 this is the most important fact about the bug.
 
+### RESOLVED (project-locally): abandon the handle instead of freeing it
+
+**The crash is avoidable in pure C#**, which contradicts the original analysis below and
+this file's earlier claim that only a native fork could fix it. Both crash paths now
+survive on hardware.
+
+The insight: you cannot *catch* the C++ throw, but nothing forces you to *call* the
+function that throws. `SafeHandle.SetHandleAsInvalid()` marks a handle unused and
+suppresses finalization, so `ReleaseHandle` — and therefore `rtmidi_in_free` — never
+runs. `ReleaseHandle` is also what unregisters the two native callbacks, so those must be
+cancelled explicitly first.
+
+Applied to a patched, embedded copy of Minis at `Packages/minis` (project-local; Minis is
+Unlicense/public domain). Full instructions, portable to any Minis project:
+**`MINIS_HOTPLUG_PATCH.md`** in the project root.
+
+**Verified 2026-09-04**, MF64 + MIDI Mix connected:
+
+| Path | Before | After |
+|---|---|---|
+| Unplug/replug during play | hard kill | survives; input resumes; LEDs re-push |
+| Domain reload (script edit) with devices connected | hard kill | survives |
+
+**Cost:** a deliberate, permanent leak — a few KB per abandoned port, bounded by how
+many times the port set changes in a session. It leaks on every domain reload too, so
+watch for memory creeping across a long editor session with many recompiles.
+
+**This is not shipped by this package.** The fix lives in a *dependency*, so consumers
+installing `com.caseyfarina.midifighter64` still get stock Minis and still crash. Making
+it real for them means forking `keijiro/Minis` and repointing the dependency — a
+deliberate maintenance decision, deferred for now.
+
+#### The failed first attempt — don't repeat it
+
+`SetHandleAsInvalid()` **alone**, without cancelling the callbacks, is *worse than
+nothing*. It does stop the `terminate()` on free; the replug then succeeds; and the
+process dies anyway a moment later:
+
+```
+0x00007FFDB4D75E5B (RtMidi)    rt::midi::RtMidiIn::RtMidiIn(...)   <- nearest symbol
+0x00007FFEE2C9CE1A (winmmbase) DriverCallback
+```
+
+Windows calling back into a port whose device is gone, because `ReleaseHandle` — the
+thing that unregisters the callbacks — was skipped. A crash on free traded for a crash
+on callback. Both halves of the patch are required.
+
 ### Why the obvious fixes don't work
 
 - **The device filter is downstream of port opening.** `AllowedDeviceNames` filters
@@ -244,6 +291,10 @@ this is the most important fact about the bug.
 - **A managed `try`/`catch` around `MidiIn.FreeDeviceHandle` catches nothing.**
   `terminate()` fires inside C++ before control returns to managed code. Wrapping the
   P/Invoke is the single most tempting dead end here.
+
+Note what does *not* follow from that second point, and was wrongly concluded here at
+first: that no managed change can help. Catching the throw and declining to make the call
+are different things, and the second is achievable — see the RESOLVED section above.
 
 ### What we did instead
 

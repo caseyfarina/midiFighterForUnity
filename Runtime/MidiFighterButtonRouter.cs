@@ -256,6 +256,10 @@ namespace MidiFighter64
             {
                 PushToggleLEDs();
                 _ledPushPending = false;
+                // Logged because the MF64 runs its own boot animation for a few seconds
+                // after power-up, which hides this push completely. Without the line there
+                // is no way to tell "the re-push never fired" from "you couldn't see it".
+                Debug.Log("[MidiFighterButtonRouter] Pushed toggle LED state to hardware.");
             }
 
             if (_heldPads.Count == 0) return;

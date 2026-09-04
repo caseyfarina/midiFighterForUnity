@@ -12,15 +12,25 @@ Full documentation is in [`Documentation~/index.html`](Documentation~/index.html
 
 ## ⚠️ MIDI hot-plug hazard — read before live use
 
-**Do not connect or disconnect any MIDI device while Unity or a build of your project
-is running.** Either direction. This can hard-crash the process — no exception, no
-dialog, no recovery.
+**By default, connecting or disconnecting any MIDI device while Unity or a build of your
+project is running can hard-crash the process** — no exception, no dialog, no recovery.
 
 This is a bug in the native MIDI layer beneath this package
 ([RtMidi](https://github.com/thestk/rtmidi), via `jp.keijiro.rtmidi` and
-`jp.keijiro.minis`). **Nothing in this package can prevent it**, and no future version
-of this package will claim to. See [Why this package can't fix
-it](#why-this-package-cant-fix-it) below.
+`jp.keijiro.minis`). **Nothing in this package can prevent it**, and no version of this
+package will claim to — see [Why this package can't fix
+it](#why-this-package-cant-fix-it).
+
+> **There is a working fix, one level down.** It is a small patch to **Minis**, not to
+> this package: cancel the native callbacks and abandon the RtMidi handle instead of
+> freeing it, so the throwing call is never made. It has been verified to survive both
+> crash paths (hot-plug during play, and domain reload with controllers connected).
+>
+> Because it lives in a *dependency*, this package cannot ship it for you. To apply it,
+> follow **`MINIS_HOTPLUG_PATCH.md`** — a self-contained guide you can drop into any
+> project that uses Minis and hand to Claude Code.
+>
+> Until you apply it, everything below is live and the guidance is: don't hot-plug.
 
 What makes it dangerous is that almost none of it is obvious:
 
@@ -71,15 +81,21 @@ Two independent reasons, both worth stating because both look fixable and aren't
    managed `catch` to catch. The process is already gone. Wrapping the P/Invoke looks
    like the obvious fix and is a dead end.
 
-The real fix is in RtMidi's C wrapper, which should catch `RtMidiError` at the language
-boundary and return an error code. Everything downstream of that already works: this
-package subscribes to `InputSystem.onDeviceChange` and reconnects, re-pushing LED state,
-so once the native abort stops, a hot-plug becomes a self-healing hiccup rather than a
-process kill.
+The real *fix* is in RtMidi's C wrapper, which should catch `RtMidiError` at the language
+boundary and return an error code. But the crash can be **avoided** without it, by not
+calling the broken function at all — which is what `MINIS_HOTPLUG_PATCH.md` does, in
+Minis rather than here.
 
-**Status:** upstream issues not yet filed. See `DEVNOTES.md` for the full analysis and
-the two proposed upstream changes (catching `RtMidiError` in `rtmidi_c.cpp`; having
-Minis close only the port that actually changed rather than all of them).
+Either way, everything downstream already works: this package subscribes to
+`InputSystem.onDeviceChange`, reconnects, and re-pushes LED state, so once the native
+abort stops, a hot-plug becomes a self-healing hiccup rather than a process kill. That
+has been confirmed on hardware with the Minis patch applied.
+
+**Status:** a verified Minis-level workaround exists (`MINIS_HOTPLUG_PATCH.md`);
+upstream issues not yet filed. See `DEVNOTES.md` for the full analysis, both captured
+crash stacks, and the two upstream changes worth proposing (catching `RtMidiError` in
+`rtmidi_c.cpp`; having Minis close only the port that actually changed rather than all
+of them).
 
 ---
 
