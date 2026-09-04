@@ -8,6 +8,81 @@ MIDI input and LED output bridge for the [DJ Tech Tools Midi Fighter 64](https:/
 
 Full documentation is in [`Documentation~/index.html`](Documentation~/index.html) — open it locally, or use **View documentation** in Package Manager.
 
+---
+
+## ⚠️ MIDI hot-plug hazard — read before live use
+
+**Do not connect or disconnect any MIDI device while Unity or a build of your project
+is running.** Either direction. This can hard-crash the process — no exception, no
+dialog, no recovery.
+
+This is a bug in the native MIDI layer beneath this package
+([RtMidi](https://github.com/thestk/rtmidi), via `jp.keijiro.rtmidi` and
+`jp.keijiro.minis`). **Nothing in this package can prevent it**, and no future version
+of this package will claim to. See [Why this package can't fix
+it](#why-this-package-cant-fix-it) below.
+
+What makes it dangerous is that almost none of it is obvious:
+
+- **It affects shipped builds, not just the editor.** `Minis.MidiDriver.Update()` runs
+  every frame in players too. If you are using this for live performance, a crash
+  mid-set is a real outcome.
+- **The trigger is a change in the system's MIDI port *count*, not the unplug.**
+  Plugging a controller *in* is exactly as risky as pulling one out.
+- **You do not have to touch a cable.** Any other application creating or destroying a
+  virtual MIDI port trips it — a DAW launching, Bome, loopMIDI, a MIDI monitor opening.
+- **It often does not crash at the moment you touch the cable.** The failure can land
+  frames later, or on the next domain reload after you edit a script. That delay makes
+  it look unrelated to the MIDI device, which is the single most misleading part of it.
+- **Recompiling with controllers connected carries the same risk**, because a domain
+  reload closes every port.
+
+### Don't unplug to turn the LEDs off
+
+Quitting cleanly already does it. `MidiFighterOutput.ClearOnStart` is on by default and
+blanks all 64 pads on `OnDestroy`, so exiting play mode or closing the app turns the
+hardware lights off on its own. Unplugging the controller to kill the LEDs at the end of
+a session is the most common way people walk into this crash — and it is unnecessary.
+
+### Reduce your exposure
+
+- **Uninstall MIDI drivers you don't use.** Minis opens *every* MIDI input port on the
+  system, so each unused virtual driver, loopback, or duplicated port is one more handle
+  that must be closed cleanly, and one more chance to hit the bug. Machines with a clean
+  MIDI stack hit this far less often. This is the single most effective thing you can do.
+- **Connect controllers before starting Unity, and leave them connected.**
+- **Quit the app or exit play mode before changing anything about your MIDI setup.**
+- **Watch the console at startup.** `MidiEventManager` warns when it sees duplicated or
+  virtual ports, naming them. That warning is a direct readout of your exposure.
+
+### Why this package can't fix it
+
+Two independent reasons, both worth stating because both look fixable and aren't:
+
+1. **The device filter can't help.** `AllowedDeviceNames` / `BlockedDeviceNames` filter
+   `InputSystem.devices` — but Minis has already called `OpenPort` on every port on the
+   system by the time that list exists. The filter decides which devices we *subscribe
+   to*, not which ports get *opened*, so it has no effect on which handles must later be
+   freed. Tightening the allow list does not reduce crash risk.
+2. **A C# `try`/`catch` can't help either.** The failure is
+   `terminate called after throwing an instance of 'rt::midi::RtMidiError'` — a C++
+   exception escaping RtMidi's C API wrapper on the port-close path. The C++ runtime
+   aborts during unwinding and never returns to managed code, so there is nothing for a
+   managed `catch` to catch. The process is already gone. Wrapping the P/Invoke looks
+   like the obvious fix and is a dead end.
+
+The real fix is in RtMidi's C wrapper, which should catch `RtMidiError` at the language
+boundary and return an error code. Everything downstream of that already works: this
+package subscribes to `InputSystem.onDeviceChange` and reconnects, re-pushing LED state,
+so once the native abort stops, a hot-plug becomes a self-healing hiccup rather than a
+process kill.
+
+**Status:** upstream issues not yet filed. See `DEVNOTES.md` for the full analysis and
+the two proposed upstream changes (catching `RtMidiError` in `rtmidi_c.cpp`; having
+Minis close only the port that actually changed rather than all of them).
+
+---
+
 ## Requirements
 
 - **Unity 6** (6000.0+)

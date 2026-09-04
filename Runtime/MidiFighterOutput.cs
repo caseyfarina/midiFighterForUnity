@@ -74,6 +74,23 @@ namespace MidiFighter64
     {
         public static MidiFighterOutput Instance { get; private set; }
 
+        /// <summary>
+        /// Raised on the main thread once the MF64 output port has been (re)opened and
+        /// LED writes will actually reach the hardware.
+        ///
+        /// The port is opened on this component's background poll thread, which is why
+        /// this exists rather than having consumers watch <see cref="IsReady"/>: it is the
+        /// safe, main-thread edge of that transition. After a hot-plug the hardware LEDs
+        /// are whatever the device powered up with, so every owner of LED state must
+        /// re-push here or the surface will disagree with application state.
+        /// <see cref="MidiFighterButtonRouter"/> re-pushes its toggle colours off this;
+        /// subscribe if you drive LEDs yourself.
+        ///
+        /// Pairs with <see cref="MidiEventManager.OnDevicesReconnected"/>, which covers the
+        /// input side. Either may fire first — a re-push must be idempotent.
+        /// </summary>
+        public static event Action OnOutputPortOpened;
+
         const int COLOR_CHANNEL_INDEX     = 2; // MIDI Ch3
         const int ANIMATION_CHANNEL_INDEX = 3; // MIDI Ch4
 
@@ -101,8 +118,24 @@ namespace MidiFighter64
         volatile bool _running;
         Thread  _pollThread;
 
+        // Set by the poll thread when it opens a port; consumed by Update on the main
+        // thread, which is where OnOutputPortOpened is actually raised. Unity API and
+        // arbitrary subscriber code must never run on the poll thread.
+        volatile bool _portOpenedPending;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() => Instance = null;
+        static void ResetStatics()
+        {
+            Instance           = null;
+            OnOutputPortOpened = null;
+        }
+
+        void Update()
+        {
+            if (!_portOpenedPending) return;
+            _portOpenedPending = false;
+            OnOutputPortOpened?.Invoke();
+        }
 
         void Awake()
         {
@@ -199,6 +232,8 @@ namespace MidiFighter64
                 var output = MidiOut.Create();
                 output.OpenPort(index);
                 lock (_lock) { _output = output; }
+                // Flag rather than invoke: this runs on the poll thread. Update raises it.
+                _portOpenedPending = true;
                 Debug.Log($"[MidiFighterOutput] Opened: {name}");
             }
             catch (Exception e)

@@ -22,6 +22,43 @@ Add that (via Project Settings → Package Manager, or by hand) *before* adding 
 
 ---
 
+## ⚠️ Hot-plug hazard — tell the user about this
+
+**Connecting or disconnecting any MIDI device while Unity or a build is running can
+hard-crash the process.** It is a native RtMidi bug beneath this package, it affects
+**shipped builds as well as the editor**, and **nothing in this package can fix it.**
+
+If the user is building anything that runs live — a performance tool, an installation —
+say so explicitly, and point them at the *MIDI hot-plug hazard* section of `README.md`.
+The three things they most need to hear:
+
+- The trigger is a change in the system's MIDI port **count**, either direction, and
+  *any* app creating or destroying a virtual MIDI port trips it without them touching
+  a cable.
+- The crash frequently lands **later** — frames afterwards, or on the next domain reload
+  — so it does not look like it was caused by the cable.
+- **They should not unplug the controller to turn the LEDs off.** `ClearOnStart` (on by
+  default) already blanks all 64 pads on `OnDestroy`, so a clean quit does it.
+
+Reducing exposure is about the *machine*, not the code: uninstall unused MIDI drivers.
+Minis opens every MIDI input port on the system, so every unused virtual driver is
+another handle that must close cleanly. `MidiEventManager` warns at startup, naming any
+duplicated or virtual ports it can see.
+
+**Never accept or propose a change that claims to fix this from inside this package.**
+Two specific dead ends, both of which look right:
+
+- **Tightening `AllowedDeviceNames` does nothing for it.** The filter runs against
+  `InputSystem.devices`, which Minis populates *after* it has already opened every port.
+  It selects which devices we subscribe to, not which ports get opened.
+- **A managed `try`/`catch` around the P/Invoke cannot catch it.** The failure is
+  `terminate()` inside C++ during unwinding; managed code never runs again.
+
+The real fix is upstream (RtMidi's C wrapper must catch `RtMidiError` on the close path).
+Full analysis, log signature and the proposed upstream changes are in `DEVNOTES.md`.
+
+---
+
 ## Architecture at a glance
 
 ```
@@ -159,6 +196,43 @@ MidiGridRouter.OnGridButton += (btn, isDown) => {
 MidiFighterOutput.Instance.SetLED(64, MidiFighterLEDColor.BrightPink);
 ```
 
+### Re-push LED state after a hot-plug
+
+A reconnected controller comes back with its LEDs in whatever state it powered up in,
+while your application state is unchanged — so the hardware silently disagrees with the
+app until something re-pushes. That is worse than dark LEDs, because the surface is now
+lying to the performer.
+
+`MidiFighterButtonRouter` already handles its own toggle colours. **If you drive LEDs
+yourself, subscribe to both of these**, since either can fire first:
+
+```csharp
+void OnEnable()
+{
+    MidiEventManager.OnDevicesReconnected += RepushLEDs;  // input side reconnected
+    MidiFighterOutput.OnOutputPortOpened  += RepushLEDs;  // output port (re)opened
+}
+
+void OnDisable()
+{
+    MidiEventManager.OnDevicesReconnected -= RepushLEDs;
+    MidiFighterOutput.OnOutputPortOpened  -= RepushLEDs;
+}
+
+void RepushLEDs()
+{
+    // Must be idempotent — both events commonly fire for one hot-plug.
+    // Gate on IsReady: OnDevicesReconnected can land before the port is back.
+    var output = MidiFighterOutput.Instance;
+    if (output == null || !output.IsReady) return;
+    foreach (var (note, colour) in _myLedState) output.SetLED(note, colour);
+}
+```
+
+Both fire on the main thread. `OnDevicesReconnected` fires from `MidiEventManager` after
+any `Reconnect()`; `OnOutputPortOpened` fires from `MidiFighterOutput`'s Update once its
+background poll thread has reopened the port.
+
 ### Read a MIDI Mix knob
 
 ```csharp
@@ -294,6 +368,7 @@ Priority order at runtime for LED colors:
 - **MIDImix Mute/Rec-Arm LEDs do NOT self-illuminate on press.** The hardware requires the host to echo Note On (velocity 127) back to light them, Note Off / velocity 0 to clear. Add `MidiMixOutput` to the scene and it will auto-mirror the router's state — which, with the default latching, means the LED stays lit until the button is pressed again. Manual control via `MidiMixOutput.Instance.SetMuteLED(ch, lit)` etc.
 - **`MidiFighterOutput.ClearOnStart`** is on by default. It sends velocity 0 to all 64 pads on Start and OnDestroy. Turn it off only if you're intentionally preserving LED state across sessions.
 - **`OnValidate` on `MidiFighterButtonRouter`** sends the current Toggle-On color to all 64 pads whenever the Inspector value changes in Play mode. This is a feature for previewing colors; if it surprises a user, that's why.
+- **Hardware LEDs go stale on a hot-plug unless something re-pushes them.** `Reconnect()` restores *input* subscriptions only. `MidiFighterButtonRouter` re-arms its own toggle push off `MidiEventManager.OnDevicesReconnected` / `MidiFighterOutput.OnOutputPortOpened`; anything driving LEDs directly must do the same (see *Re-push LED state after a hot-plug*). A surface showing the wrong state is worse than a dark one.
 - **URP shader magenta on generated primitives:** in URP projects, do not `Shader.Find("Standard")` — `CreatePrimitive` already assigns a working pipeline material; modify that instead of replacing it.
 
 ---
@@ -305,6 +380,9 @@ Priority order at runtime for LED colors:
 - Don't invent LED palette values — the enum entries are the confirmed set. For anything else use the raw `int velocity` overload and let the user experiment.
 - Don't compute MF64 note numbers manually — always use `MidiFighter64InputMap.ToNote/FromNote`.
 - Don't forget `-=` in `OnDisable` for any `+=` in `OnEnable` on a router event.
+- Don't claim any change in this package fixes the hot-plug crash, and don't wrap `MidiIn.FreeDeviceHandle` in a `try`/`catch` believing it does — see the hazard section above.
+- Don't add retry loops around device connection to "survive" a hot-plug. When it fails, the process is already dead; there is nothing to retry into.
+- Don't catch and swallow MIDI errors in a way that hides a genuinely broken setup — a silent MIDI stack is much harder to diagnose than a noisy one.
 
 ---
 

@@ -177,10 +177,11 @@ namespace MidiFighter64
         // reused per-frame to avoid List allocs in Update
         readonly List<int>              _heldSnapshot = new(64);
 
-        // Whether we've done the initial toggle-off LED push. Deferred until
-        // MidiFighterOutput reports IsReady, because Router.OnEnable typically
-        // runs before MidiFighterOutput.Start opens the MIDI port.
-        bool _initialLedPushDone;
+        // False once the toggle LED push has landed. Deferred rather than immediate
+        // because Router.OnEnable typically runs before MidiFighterOutput.Start opens the
+        // MIDI port — and re-armed on every reconnect, since a hot-plugged MF64 comes back
+        // with its LEDs cleared while _toggleStates still holds the true state.
+        bool _ledPushPending;
 
         // ------------------------------------------------------------------
 
@@ -201,10 +202,25 @@ namespace MidiFighter64
 
             MidiEventManager.OnNoteOn  += HandleNoteOn;
             MidiEventManager.OnNoteOff += HandleNoteOff;
-            _initialLedPushDone = false;
-            PushToggleLEDs(); // may no-op if the output port isn't open yet;
-                              // Update() retries once MidiFighterOutput.IsReady.
+
+            // A hot-plug leaves the hardware showing whatever it powered up with while
+            // _toggleStates still holds the real state, so the surface lies to the
+            // performer until something re-pushes. Both edges matter and either can come
+            // first: the input side reconnects (OnDevicesReconnected) and the output port
+            // reopens on the poll thread (OnOutputPortOpened). Both just re-arm the
+            // deferred push below, which already waits for MidiFighterOutput.IsReady —
+            // so a duplicate signal costs nothing and an early one is not lost.
+            MidiEventManager.OnDevicesReconnected += HandleReconnected;
+            MidiFighterOutput.OnOutputPortOpened  += HandleReconnected;
+
+            // Arm rather than push: MidiFighterOutput opens its port on a background
+            // thread from Start, so it is never ready this early. Update lands the push
+            // on the first frame IsReady turns true.
+            _ledPushPending = true;
         }
+
+        // Re-arms the deferred LED push. Cheap and idempotent by design — see OnEnable.
+        void HandleReconnected() => _ledPushPending = true;
 
         void OnDisable()
         {
@@ -214,6 +230,8 @@ namespace MidiFighter64
 
             MidiEventManager.OnNoteOn  -= HandleNoteOn;
             MidiEventManager.OnNoteOff -= HandleNoteOff;
+            MidiEventManager.OnDevicesReconnected -= HandleReconnected;
+            MidiFighterOutput.OnOutputPortOpened  -= HandleReconnected;
             _heldPads.Clear();
         }
 
@@ -230,13 +248,14 @@ namespace MidiFighter64
 
         void Update()
         {
-            // Retry the initial LED push until MidiFighterOutput is ready.
-            if (!_initialLedPushDone
+            // Run any pending LED push (initial, or re-armed by a reconnect) once
+            // MidiFighterOutput reports the port is actually open.
+            if (_ledPushPending
                 && MidiFighterOutput.Instance != null
                 && MidiFighterOutput.Instance.IsReady)
             {
                 PushToggleLEDs();
-                _initialLedPushDone = true;
+                _ledPushPending = false;
             }
 
             if (_heldPads.Count == 0) return;
@@ -389,8 +408,9 @@ namespace MidiFighter64
         /// Pushes toggle-state LED colors to the hardware for every pad that is
         /// currently in Toggle mode (per the assigned <see cref="MidiFighter64ButtonConfig"/>).
         /// Untouched pads receive the toggle-off color so they visually match the
-        /// state that toggling them will exit. Called automatically on OnEnable
-        /// (and retried from Update once the output port is open).
+        /// state that toggling them will exit. Called automatically from Update once the
+        /// output port is open — at startup, and again after every reconnect. No-ops
+        /// silently if the port is not open, so call it freely.
         /// </summary>
         public void PushToggleLEDs()
         {

@@ -150,6 +150,153 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 
 ---
 
+## The MIDI hot-plug crash (native, upstream, unfixed)
+
+Filed from `pincushionedReloaded`, Unity 6000.3.7f1, Windows, D3D11, package v2.3.0.
+Reproduced twice reliably on a machine with several virtual MIDI drivers installed.
+
+**This is not a bug in this package and cannot be fixed here.** The user-facing writeup
+is in `README.md` ("MIDI hot-plug hazard"); this section is the engineering detail.
+
+### Signature
+
+```
+Begin MonoManager ReloadAssembly
+MidiInWinMM::openPort: error closing Windows MM MIDI input port (midiInUnprepareHeader).
+terminate called after throwing an instance of 'rt::midi::RtMidiError'
+  what():  MidiInWinMM::openPort: error closing Windows MM MIDI input port (midiInUnprepareHeader).
+RtMidi.MidiIn:FreeDeviceHandle (intptr) (at ./Library/PackageCache/jp.keijiro.rtmidi@.../Runtime/MidiIn.cs:32)
+```
+
+While hung: **100% of one core, memory flat, `Responding=False`, no recovery after 60s.**
+Flat memory plus a pegged core means an abort loop, not slow work — don't wait it out.
+
+### Second capture: the runtime path, reproduced here (2026-09-04)
+
+Reproduced locally on `midiControllerProject`, Unity 6000.3.7f1, with an MF64 + MIDI Mix
+connected, by unplugging and replugging the MF64 **during play mode**. This capture is
+more useful than the one above, because it is **not** on a domain reload:
+
+```
+MidiInWinMM::openPort: error closing Windows MM MIDI input port (midiInUnprepareHeader).
+terminate called after throwing an instance of 'rt::midi::RtMidiError'
+  what():  MidiInWinMM::openPort: error closing Windows MM MIDI input port (midiInUnprepareHeader).
+
+RtMidi.MidiIn:FreeDeviceHandle (intptr)   (at .../jp.keijiro.rtmidi@aa0dd76dac7e/Runtime/MidiIn.cs:32)
+RtMidi.MidiBase:ReleaseHandle ()          (at .../jp.keijiro.rtmidi@aa0dd76dac7e/Runtime/MidiBase.cs:20)
+System.Runtime.InteropServices.SafeHandle:DangerousReleaseInternal (bool)
+System.Runtime.InteropServices.SafeHandle:InternalDispose ()
+System.Runtime.InteropServices.SafeHandle:Dispose ()
+Minis.MidiPort:Dispose ()                 (at .../jp.keijiro.minis@755ff0ba722e/Runtime/Internal/MidiPort.cs:86)
+Minis.MidiDriver:CloseAllPorts ()         (at .../jp.keijiro.minis@755ff0ba722e/Runtime/Internal/MidiDriver.cs:24)
+Minis.MidiDriver:Update ()                (at .../jp.keijiro.minis@755ff0ba722e/Runtime/Internal/MidiDriver.cs:39)
+Minis.MidiSystemWrangler:<.cctor>b__3_0 ()
+UnityEditor.EditorApplication:Internal_CallUpdateFunctions ()
+```
+
+**Why this one matters:** the entry point is `MidiDriver.Update()` line 39 — the
+port-count-mismatch branch — not `ReloadAssembly`. That is the method that runs **every
+frame, in players as well as the editor**. The domain-reload capture left room to argue
+this was an editor teardown problem; this stack closes that off. It is the same abort,
+reached from the frame loop.
+
+It also walks the full predicted chain link by link, exactly as analysed below:
+`Update()` (39) → `CloseAllPorts()` (24) → `MidiPort.Dispose()` (86) →
+`SafeHandle.ReleaseHandle` → `FreeDeviceHandle` (32) → `terminate()`.
+
+**This package was not on the stack.** The last frame from our code is a normal
+`MidiEventManager.ConnectAllDevices()` log line that had already returned; the abort
+happens inside Minis' `Update`, after our code is done. Confirmation that no change here
+could have intervened.
+
+Process signature while hung, measured: **101% of one core sustained, working set flat at
+3855 MB across a 6 s sample (0.0 MB delta), `Responding=False`.** Force-kill is the only
+exit. Because the process is killed rather than shut down, `MidiFighterOutput.OnDestroy`
+never runs, so `ClearOnStart` never sends its blanking burst and the MF64 is left showing
+its Utility default state — a useful tell that you hit *this* failure and not a hang.
+
+### Root cause chain
+
+1. **Minis opens every MIDI port on the system.** `Runtime/Internal/MidiDriver.cs:18`
+   loops `for (var i = 0; i < _probe.PortCount; i++)` unconditionally;
+   `Runtime/Internal/MidiPort.cs:78` calls `_rtmidi.OpenPort(portNumber)`.
+2. **rtmidi frees those handles through an unguarded P/Invoke.**
+   `Runtime/MidiIn.cs:32`: `protected override void FreeDeviceHandle(IntPtr ptr) => _InFree(ptr);`
+   When the native side throws `RtMidiError` — which WinMM does when a port can't be
+   closed cleanly — the C++ exception escapes RtMidi's C API wrapper, the runtime aborts
+   during unwinding, and the process dies.
+3. **This package sits downstream of both** and never touches those handles.
+
+### Not editor-only
+
+`Minis.MidiDriver.Update()` runs every frame in players too, and responds to *any* port
+count mismatch by calling `CloseAllPorts()` then `OpenAllAvailablePorts()`. So every open
+handle is disposed on any count change, in either direction, from any source — including
+another application creating or destroying a virtual port. For a live-performance tool
+this is the most important fact about the bug.
+
+### Why the obvious fixes don't work
+
+- **The device filter is downstream of port opening.** `AllowedDeviceNames` filters
+  `InputSystem.devices`, which only exists after Minis has already opened everything.
+  It selects subscriptions, not ports. **This is the key correction** to any assumption
+  that tightening the allow-list helps.
+- **A managed `try`/`catch` around `MidiIn.FreeDeviceHandle` catches nothing.**
+  `terminate()` fires inside C++ before control returns to managed code. Wrapping the
+  P/Invoke is the single most tempting dead end here.
+
+### What we did instead
+
+Reduce exposure and stop the user walking into it blind — nothing more:
+
+- Documented the hazard in `README.md` and `CLAUDE.md`, including the counter-intuitive
+  parts (count-change trigger, delayed failure, affects builds, don't unplug for LEDs).
+- `MidiEventManager.WarnOnPortClutter()` names duplicated and virtual ports at connect
+  time, turning an invisible risk into a console line.
+- `MidiEventManager.DisconnectAllDevices()` is exception-guarded — **hygiene, not a fix**,
+  and commented as such in the source so nobody later mistakes it for one.
+- LED state is re-asserted after a reconnect (`OnDevicesReconnected` /
+  `OnOutputPortOpened`), so the recovery path that already exists actually leaves the
+  hardware correct.
+
+### Upstream: the two changes worth proposing
+
+**Neither has been filed yet.** Both are MIT and forkable. Attach the runtime-path stack
+above — a frame-loop reproduction is a materially stronger report than a teardown one.
+
+**1. `thestk/rtmidi` — catch `RtMidiError` in the C wrapper on the close/free path.**
+A C API allowing a C++ exception to escape is a genuine bug, it's reproducible, and the
+log signature above is precise enough to act on. This is the one that matters, because
+everything downstream of the abort already works:
+
+| Step | Today | With RtMidi catching |
+|---|---|---|
+| `CloseAllPorts()` hits a bad handle | **`terminate()`, process dies** | logs, continues |
+| `OpenAllAvailablePorts()` | never runs | ports reopen |
+| InputSystem device-change fires | never runs | fires |
+| `MidiEventManager.Reconnect()` | never runs | **re-subscribes, MIDI resumes** |
+
+That converts a hard process kill into a self-healing hiccup, and nothing else in the
+chain has to change for it to work.
+
+Forking is possible but expensive: `jp.keijiro.rtmidi` ships **prebuilt binaries only**
+(`Runtime/Plugins/{Windows/RtMidi.dll, Linux/libRtMidi.so, macOS/RtMidi.bundle,
+Android/libRtMidi.so}`) with no C++ source, so it means a native build toolchain per
+shipping platform, then forking `jp.keijiro.rtmidi` to swap the binary and repointing the
+manifest. Filing upstream is far cheaper and probably better.
+
+**2. `keijiro/Minis` — close only the port that actually changed.**
+`MidiDriver.Update()` currently closes *all* ports and reopens them on any count change.
+Closing just the departed port would shrink the crash surface from "every open handle" to
+"the one that changed", and would stop MIDI dropping across every device when one is
+touched. Contained C# change, no native rebuild, and it makes hot-plug seamless rather
+than merely non-fatal. **If only one contribution gets made, this is arguably the higher
+value one** — and it must be proposed as close-only-the-changed-port, not merely as a
+port allow-list. (An allow-list in Minis would also help, since ports could be filtered
+*before* opening, but it is a larger API change.)
+
+---
+
 ## Assets/ folder note
 
 The consuming Unity project this package lives in (`F:\Unity Projects 2026\midiControllerPackage\`) has `Assets/` as a bare Unity URP template. All package code lives under `Packages/midiFighterForUnity/`. The dev scene under `Assets/Scenes/` is hand-made: an empty scene with the MIDI Controller prefab dragged in.
