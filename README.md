@@ -10,92 +10,62 @@ Full documentation is in [`Documentation~/index.html`](Documentation~/index.html
 
 ---
 
-## ⚠️ MIDI hot-plug hazard — read before live use
+## ⚠️ MIDI hot-plug crash — install the fixed RtMidi before live use
 
-**By default, connecting or disconnecting any MIDI device while Unity or a build of your
-project is running can hard-crash the process** — no exception, no dialog, no recovery.
+**With stock dependencies, connecting or disconnecting any MIDI device while Unity or a
+build of your project is running can hard-crash the process**: no exception, no dialog,
+no recovery. It affects shipped builds as well as the editor.
 
-This is a bug in the native MIDI layer beneath this package
-([RtMidi](https://github.com/thestk/rtmidi), via `jp.keijiro.rtmidi` and
-`jp.keijiro.minis`). **Nothing in this package can prevent it**, and no version of this
-package will claim to — see [Why this package can't fix
-it](#why-this-package-cant-fix-it).
+**It is fixed, one layer down, in RtMidi.** The cause was RtMidi 6.0.0 (bundled by
+`jp.keijiro.rtmidi` 2.2.0, which Minis depends on): when a device vanished, WinMM's
+`closePort()` threw `RtMidiError` from a destructor, and the process hit `terminate()`.
+[RtMidi 6.1.0](https://github.com/thestk/rtmidi/releases/tag/6.1.0) fixed it
+([thestk/rtmidi#376](https://github.com/thestk/rtmidi/issues/376)). Until
+`jp.keijiro.rtmidi` ships 6.1.0, add this fork, with its Windows DLL rebuilt from 6.1.0,
+to your project's `Packages/manifest.json`:
 
-> **There is a working fix, one level down.** It is a small patch to **Minis**, not to
-> this package: cancel the native callbacks and abandon the RtMidi handle instead of
-> freeing it, so the throwing call is never made. It has been verified to survive both
-> crash paths (hot-plug during play, and domain reload with controllers connected).
->
-> Because it lives in a *dependency*, this package cannot ship it for you. To apply it,
-> follow **`MINIS_HOTPLUG_PATCH.md`** — a self-contained guide you can drop into any
-> project that uses Minis and hand to Claude Code.
->
-> Until you apply it, everything below is live and the guidance is: don't hot-plug.
+```json
+"jp.keijiro.rtmidi": "https://github.com/caseyfarina/jp.keijiro.rtmidi.git?path=Packages/jp.keijiro.rtmidi#2.2.1-cf.1"
+```
 
-What makes it dangerous is that almost none of it is obvious:
+It overrides the RtMidi that Minis pulls in; keep stock Minis. A Unity package cannot
+declare a git dependency, so this package cannot do it for you. Verified on hardware with
+an MF64 and a MIDI Mix: unplug and replug in Edit and Play mode, and domain reloads with
+both connected, all survive. This package then reconnects and re-pushes the LEDs on its
+own.
 
-- **It affects shipped builds, not just the editor.** `Minis.MidiDriver.Update()` runs
-  every frame in players too. If you are using this for live performance, a crash
-  mid-set is a real outcome.
-- **The trigger is a change in the system's MIDI port *count*, not the unplug.**
-  Plugging a controller *in* is exactly as risky as pulling one out.
-- **You do not have to touch a cable.** Any other application creating or destroying a
-  virtual MIDI port trips it — a DAW launching, Bome, loopMIDI, a MIDI monitor opening.
-- **It often does not crash at the moment you touch the cable.** The failure can land
-  frames later, or on the next domain reload after you edit a script. That delay makes
-  it look unrelated to the MIDI device, which is the single most misleading part of it.
-- **Recompiling with controllers connected carries the same risk**, because a domain
-  reload closes every port.
+> An earlier workaround patched Minis to abandon handles instead of freeing them
+> (`MINIS_HOTPLUG_PATCH.md`). It is superseded: don't apply it, and remove it where it is.
+
+### Without the fix
+
+If you are on stock `jp.keijiro.rtmidi` (Windows), don't hot-plug while running. What
+makes it dangerous is that almost none of it is obvious:
+
+- **The trigger is a change in the system's MIDI port *count*, in either direction.**
+  Plugging a controller in is as risky as pulling one out, and any app creating or
+  destroying a virtual MIDI port (a DAW, Bome, loopMIDI, a MIDI monitor) trips it.
+- **It often does not crash when you touch the cable.** It can land frames later, or on
+  the next domain reload after a script edit, so it looks unrelated to MIDI.
+- **Nothing in this package can prevent it.** The device allow list filters
+  `InputSystem.devices`, which Minis builds after it has already opened every port, and
+  a C# `try`/`catch` cannot catch a native `terminate()`.
 
 ### Don't unplug to turn the LEDs off
 
 Quitting cleanly already does it. `MidiFighterOutput.ClearOnStart` is on by default and
 blanks all 64 pads on `OnDestroy`, so exiting play mode or closing the app turns the
-hardware lights off on its own. Unplugging the controller to kill the LEDs at the end of
-a session is the most common way people walk into this crash — and it is unnecessary.
+hardware lights off on its own.
 
-### Reduce your exposure
+### Keep the MIDI stack tidy
 
-- **Uninstall MIDI drivers you don't use.** Minis opens *every* MIDI input port on the
-  system, so each unused virtual driver, loopback, or duplicated port is one more handle
-  that must be closed cleanly, and one more chance to hit the bug. Machines with a clean
-  MIDI stack hit this far less often. This is the single most effective thing you can do.
-- **Connect controllers before starting Unity, and leave them connected.**
-- **Quit the app or exit play mode before changing anything about your MIDI setup.**
-- **Watch the console at startup.** `MidiEventManager` warns when it sees duplicated or
-  virtual ports, naming them. That warning is a direct readout of your exposure.
+Minis opens *every* MIDI input port on the system. Even with the fix, every port change
+makes Minis close and reopen all of them, so input drops briefly on every device.
+Uninstall MIDI drivers you don't use, connect controllers before starting, and watch the
+startup console: `MidiEventManager` names duplicated or virtual ports it can see.
+Duplicated ports also deliver every message twice, which breaks latching.
 
-### Why this package can't fix it
-
-Two independent reasons, both worth stating because both look fixable and aren't:
-
-1. **The device filter can't help.** `AllowedDeviceNames` / `BlockedDeviceNames` filter
-   `InputSystem.devices` — but Minis has already called `OpenPort` on every port on the
-   system by the time that list exists. The filter decides which devices we *subscribe
-   to*, not which ports get *opened*, so it has no effect on which handles must later be
-   freed. Tightening the allow list does not reduce crash risk.
-2. **A C# `try`/`catch` can't help either.** The failure is
-   `terminate called after throwing an instance of 'rt::midi::RtMidiError'` — a C++
-   exception escaping RtMidi's C API wrapper on the port-close path. The C++ runtime
-   aborts during unwinding and never returns to managed code, so there is nothing for a
-   managed `catch` to catch. The process is already gone. Wrapping the P/Invoke looks
-   like the obvious fix and is a dead end.
-
-The real *fix* is in RtMidi's C wrapper, which should catch `RtMidiError` at the language
-boundary and return an error code. But the crash can be **avoided** without it, by not
-calling the broken function at all — which is what `MINIS_HOTPLUG_PATCH.md` does, in
-Minis rather than here.
-
-Either way, everything downstream already works: this package subscribes to
-`InputSystem.onDeviceChange`, reconnects, and re-pushes LED state, so once the native
-abort stops, a hot-plug becomes a self-healing hiccup rather than a process kill. That
-has been confirmed on hardware with the Minis patch applied.
-
-**Status:** a verified Minis-level workaround exists (`MINIS_HOTPLUG_PATCH.md`);
-upstream issues not yet filed. See `DEVNOTES.md` for the full analysis, both captured
-crash stacks, and the two upstream changes worth proposing (catching `RtMidiError` in
-`rtmidi_c.cpp`; having Minis close only the port that actually changed rather than all
-of them).
+See `DEVNOTES.md` for the full analysis and the captured crash stacks.
 
 ---
 

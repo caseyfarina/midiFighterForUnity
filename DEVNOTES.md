@@ -150,7 +150,47 @@ Mitigations now in place: `AllowedDeviceNames` / `BlockedDeviceNames` on `MidiEv
 
 ---
 
-## The MIDI hot-plug crash (native, upstream, unfixed)
+## The MIDI hot-plug crash (native; FIXED in RtMidi 6.1.0)
+
+### RESOLVED AT THE SOURCE (2026-10-24)
+
+RtMidi 6.1.0 (released 2026-10-15) fixed the root cause: thestk/rtmidi#376, commit
+`76dbaa1d`, "WinMM: ... input closePort teardown". `MidiInWinMM::closePort()` now finishes
+its cleanup even when `midiInUnprepareHeader` fails, leaks the one header the driver won't
+release, and reports the failure as a WARNING instead of throwing. The comment in that
+code names the destructor/`terminate()` problem explicitly. The same commit fixes
+`MidiOutWinMM::closePort()`, so LED output handles are covered too.
+
+Stock `jp.keijiro.rtmidi` 2.2.0 bundles RtMidi 6.0.0, so it still crashes. The fork
+**`caseyfarina/jp.keijiro.rtmidi` @ `2.2.1-cf.1`** rebuilds only the Windows DLL from 6.1.0
+(MSVC), keeping Keijiro's C API extension. Projects add it to their own manifest, since a
+package can't declare a git dependency:
+
+```
+"jp.keijiro.rtmidi": "https://github.com/caseyfarina/jp.keijiro.rtmidi.git?path=Packages/jp.keijiro.rtmidi#2.2.1-cf.1"
+```
+
+Verified 2026-10-24, MF64 + MIDI Mix, **stock Minis 1.3.2**:
+
+| Test | RtMidi 6.0.0 DLL | RtMidi 6.1.0 DLL |
+|---|---|---|
+| Fork's `RtMidi/hotplug-test` harness, MF64 unplug | `terminate()` on the first unplug | survives repeated cycles; logs `closePort ... (MMRESULT 65)` |
+| Unity Edit mode, MF64 unplug | (the original crash path) | Minis rescans; survives |
+| Unity Play mode, unplug + replug | crash (2026-09-04 capture below) | full recovery: outputs reopen, devices reconnect, LEDs re-push |
+| Domain reload with both connected | crash (original report) | survives, ports reopen |
+
+The Minis patch below (abandon handles) is **superseded**. It worked, but it leaked per
+port change, and it only covered Minis' own input handles. A Keijiro issue asks for
+`jp.keijiro.rtmidi` to ship 6.1.0, after which the fork can go.
+
+What stays true with the fix: Minis still closes and reopens **every** port on any count
+change, so a port change briefly drops input on all devices. Closing only the changed port
+is still a worthwhile Minis improvement, just no longer a crash fix.
+
+---
+
+The history below is kept as written.
+
 
 Filed from `pincushionedReloaded`, Unity 6000.3.7f1, Windows, D3D11, package v2.3.0.
 Reproduced twice reliably on a machine with several virtual MIDI drivers installed.
@@ -311,6 +351,8 @@ Reduce exposure and stop the user walking into it blind — nothing more:
   hardware correct.
 
 ### Upstream: the two changes worth proposing
+
+**Update 2026-10-24:** proposal 1 was fixed upstream independently (RtMidi 6.1.0, thestk/rtmidi#376); see the RESOLVED section above. Proposal 2 still stands as an improvement. Original text:
 
 **Neither has been filed yet.** Both are MIT and forkable. Attach the runtime-path stack
 above — a frame-loop reproduction is a materially stronger report than a teardown one.

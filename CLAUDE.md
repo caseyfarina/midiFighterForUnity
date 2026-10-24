@@ -22,58 +22,32 @@ Add that (via Project Settings → Package Manager, or by hand) *before* adding 
 
 ---
 
-## ⚠️ Hot-plug hazard — tell the user about this
+## ⚠️ Hot-plug crash — tell the user about this
 
-**By default, connecting or disconnecting any MIDI device while Unity or a build is
-running can hard-crash the process.** It is a native RtMidi bug beneath this package and
-it affects **shipped builds as well as the editor**.
+**With stock dependencies, connecting or disconnecting any MIDI device while Unity or a
+build is running can hard-crash the process**, editor and shipped builds alike.
 
-**A verified fix exists, but not in this package** — it is a small patch to *Minis*
-(cancel the native callbacks, then abandon the RtMidi handle instead of freeing it, so
-the throwing call is never made). If a user hits this crash, point them at
-**`MINIS_HOTPLUG_PATCH.md`** in the project root, a self-contained guide for applying it
-to any Minis project. Confirmed on hardware to survive both crash paths: hot-plug during
-play, and domain reload with controllers connected.
+**The fix is RtMidi 6.1.0** (thestk/rtmidi#376). Stock `jp.keijiro.rtmidi` 2.2.0 bundles
+RtMidi 6.0.0, whose WinMM `closePort()` throws from a destructor and reaches `terminate()`.
+Until Keijiro ships 6.1.0, projects add the fork
+`https://github.com/caseyfarina/jp.keijiro.rtmidi.git?path=Packages/jp.keijiro.rtmidi#2.2.1-cf.1`
+to their own `manifest.json` (packages can't declare git dependencies) and keep stock
+Minis. Verified on hardware 2026-10-24. If a user hits this crash, check for that line
+first. The `README.md` hot-plug section is the user-facing version.
 
-**Nothing in *this* package can fix it**, and no change here should claim to. The
-distinction is the whole point: the fix belongs to a dependency, so this package
-documents and mitigates around the hazard rather than pretending to solve it.
+- **Do not suggest the old Minis patch** (`MINIS_HOTPLUG_PATCH.md`, abandoning RtMidi
+  handles instead of freeing them). It was a verified workaround, now superseded, and it
+  leaked per port change.
+- **Never accept a change that claims to fix this from inside this package.** The device
+  allow list filters subscriptions, not which ports Minis opens, and a managed
+  `try`/`catch` cannot catch a native `terminate()`.
+- **Users should not unplug the controller to turn the LEDs off.** `ClearOnStart` (on by
+  default) blanks all 64 pads on `OnDestroy`, so a clean quit does it.
+- Even fixed, any port-count change makes Minis close and reopen every port, so input
+  drops briefly. Fewer installed MIDI drivers means fewer of those; `MidiEventManager`
+  names duplicated and virtual ports at startup.
 
-If the user is building anything that runs live — a performance tool, an installation —
-say so explicitly, and point them at the *MIDI hot-plug hazard* section of `README.md`.
-The three things they most need to hear:
-
-- The trigger is a change in the system's MIDI port **count**, either direction, and
-  *any* app creating or destroying a virtual MIDI port trips it without them touching
-  a cable.
-- The crash frequently lands **later** — frames afterwards, or on the next domain reload
-  — so it does not look like it was caused by the cable.
-- **They should not unplug the controller to turn the LEDs off.** `ClearOnStart` (on by
-  default) already blanks all 64 pads on `OnDestroy`, so a clean quit does it.
-
-Reducing exposure is about the *machine*, not the code: uninstall unused MIDI drivers.
-Minis opens every MIDI input port on the system, so every unused virtual driver is
-another handle that must close cleanly. `MidiEventManager` warns at startup, naming any
-duplicated or virtual ports it can see.
-
-**Never accept or propose a change that claims to fix this from inside this package.**
-Two specific dead ends, both of which look right:
-
-- **Tightening `AllowedDeviceNames` does nothing for it.** The filter runs against
-  `InputSystem.devices`, which Minis populates *after* it has already opened every port.
-  It selects which devices we subscribe to, not which ports get opened.
-- **A managed `try`/`catch` around the P/Invoke cannot catch it.** The failure is
-  `terminate()` inside C++ during unwinding; managed code never runs again.
-
-A *managed* avoidance is possible (don't call the broken function — see
-`MINIS_HOTPLUG_PATCH.md`), but the real *fix* is upstream: RtMidi's C wrapper must catch
-`RtMidiError` on the close path. Full analysis, both captured crash stacks, and the
-proposed upstream changes are in `DEVNOTES.md`.
-
-Note the correction that cost two crashes to learn: `SetHandleAsInvalid()` alone is
-**worse than nothing**. `ReleaseHandle` is also what unregisters the native callbacks, so
-abandoning without cancelling them first leaves Windows calling `DriverCallback` into a
-dead port. Both halves are required.
+Full history, both captured crash stacks and the resolution are in `DEVNOTES.md`.
 
 ---
 
