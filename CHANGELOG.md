@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.4.0] — 2026-10-24
 
 ### Added
 - **`MidiEventManager.OnDevicesReconnected`** and **`MidiFighterOutput.OnOutputPortOpened`** — the two main-thread edges of a MIDI hot-plug, for anyone holding hardware LED state. `Reconnect()` restores *input* subscriptions only, so before this a reconnected controller came back with its LEDs however it powered up while application state was unchanged, and the surface silently disagreed with the app — worse than dark LEDs, because the hardware then lies to the performer. Either event can fire first (input reconnect vs. the background poll thread reopening the output port), so a re-push must be idempotent and gated on `MidiFighterOutput.IsReady`; `MidiFighterButtonRouter` now re-arms its toggle-LED push off both, and consumers driving LEDs directly should do the same. `OnOutputPortOpened` is raised from `Update`, never from the poll thread that actually opens the port.
