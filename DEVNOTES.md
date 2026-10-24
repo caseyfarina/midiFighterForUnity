@@ -180,7 +180,7 @@ Verified 2026-10-24, MF64 + MIDI Mix, **stock Minis 1.3.2**:
 | Domain reload with both connected | crash (original report) | survives, ports reopen |
 
 The Minis patch below (abandon handles) is **superseded**. It worked, but it leaked per
-port change, and it only covered Minis' own input handles. A Keijiro issue asks for
+port change, and it only covered Minis' own input handles. keijiro/jp.keijiro.rtmidi#27 (with our 2026-10-24 comment) asks for
 `jp.keijiro.rtmidi` to ship 6.1.0, after which the fork can go.
 
 What stays true with the fix: Minis still closes and reopens **every** port on any count
