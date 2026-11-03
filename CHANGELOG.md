@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0] — 2026-11-03
+
+### Changed
+- **MIDI Mix knobs and faders glide, on by default.** `OnKnob`, `OnChannelFader` and `OnMasterFader` now follow each new MIDI value over `KnobGlideSeconds` / `FaderGlideSeconds` (default 0.08 s; 0 = off, the old behaviour), so a continuous mapping moves smoothly instead of in 1/127 steps. While a control moves they fire once a frame from the router's `Update`, critically damped (no overshoot), and stop when it lands. A control's first value is taken as-is, so nothing glides up from 0 at startup. **Behaviour change for every consumer of those events:** a stepped selector, or a value passed on as MIDI, should read `OnKnobRaw` / `OnFaderRaw`, which are never smoothed.
+
+### Added
+- **`MidiGlide`**, the allocation-free per-control filter behind it, with EditMode tests.
+
 ## [2.4.1] — 2026-11-03
 
 ### Removed

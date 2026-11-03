@@ -24,6 +24,11 @@ namespace MidiFighter64
     ///
     /// All channel arguments are 1-based (1–8). Fader/knob values are 0–1.
     ///
+    /// OnKnob, OnChannelFader and OnMasterFader glide to each new value (see
+    /// KnobGlideSeconds / FaderGlideSeconds, on by default), firing once a frame while
+    /// they move. The raw events are never smoothed: read them for a stepped selector
+    /// or a value passed on as MIDI.
+    ///
     /// Mute and Rec-Arm latch (press-to-toggle) by default — see LatchMute /
     /// LatchRecArm. OnSolo is always momentary, because the SOLO modifier has
     /// to be held for those notes to be emitted at all.
@@ -43,6 +48,24 @@ namespace MidiFighter64
 
         readonly bool[] _muteLatched   = new bool[8];
         readonly bool[] _recArmLatched = new bool[8];
+
+        [Header("Glide (knobs and faders)")]
+        [Tooltip("Seconds a knob takes to glide to each new MIDI value, so 7-bit steps don't show. 0 = off: OnKnob reports MIDI values as they arrive. OnKnobRaw is never smoothed.")]
+        [SerializeField, Min(0)] float _knobGlideSeconds  = 0.08f;
+        [Tooltip("Seconds a fader (channel or master) takes to glide to each new MIDI value. 0 = off. OnFaderRaw is never smoothed.")]
+        [SerializeField, Min(0)] float _faderGlideSeconds = 0.08f;
+
+        /// <summary>Glide time for <see cref="OnKnob"/>, in seconds; 0 turns it off.
+        /// Read <see cref="OnKnobRaw"/> for a control that needs the MIDI value itself
+        /// (a stepped selector, a value passed on as MIDI).</summary>
+        public float KnobGlideSeconds  { get => _knobGlideSeconds;  set => _knobGlideSeconds  = Mathf.Max(0f, value); }
+        /// <summary>Glide time for <see cref="OnChannelFader"/> and <see cref="OnMasterFader"/>,
+        /// in seconds; 0 turns it off. <see cref="OnFaderRaw"/> is never smoothed.</summary>
+        public float FaderGlideSeconds { get => _faderGlideSeconds; set => _faderGlideSeconds = Mathf.Max(0f, value); }
+
+        // [row-1, channel-1], and faders by channel with the master at index 0.
+        readonly MidiGlide[,] _knobGlide  = new MidiGlide[MidiMixInputMap.KNOB_ROWS, MidiMixInputMap.CHANNEL_COUNT];
+        readonly MidiGlide[]  _faderGlide = new MidiGlide[MidiMixInputMap.CHANNEL_COUNT + 1];
 
         // ------------------------------------------------------------------ //
         // Public events
@@ -143,6 +166,33 @@ namespace MidiFighter64
             MidiEventManager.OnControlChange -= HandleCC;
             MidiEventManager.OnNoteOn        -= HandleNoteOn;
             MidiEventManager.OnNoteOff       -= HandleNoteOff;
+
+            // Re-enabled, each control's next value is taken as-is, not glided from a stale one.
+            for (int r = 0; r < MidiMixInputMap.KNOB_ROWS; r++)
+                for (int c = 0; c < MidiMixInputMap.CHANNEL_COUNT; c++)
+                    _knobGlide[r, c].Reset();
+            for (int i = 0; i < _faderGlide.Length; i++) _faderGlide[i].Reset();
+        }
+
+        void Update()
+        {
+            if (!_isActiveInstance) return;
+            float dt = Time.unscaledDeltaTime;
+
+            for (int r = 0; r < MidiMixInputMap.KNOB_ROWS; r++)
+                for (int c = 0; c < MidiMixInputMap.CHANNEL_COUNT; c++)
+                    if (_knobGlide[r, c].Step(_knobGlideSeconds, dt))
+                        OnKnob?.Invoke(c + 1, r + 1, _knobGlide[r, c].Value);
+
+            for (int i = 0; i < _faderGlide.Length; i++)
+                if (_faderGlide[i].Step(_faderGlideSeconds, dt))
+                    FireFader(i, _faderGlide[i].Value);
+        }
+
+        static void FireFader(int channel, float value)
+        {
+            if (channel == 0) OnMasterFader?.Invoke(value);
+            else              OnChannelFader?.Invoke(channel, value);
         }
 
         // ------------------------------------------------------------------ //
@@ -163,17 +213,18 @@ namespace MidiFighter64
             if (MidiMixInputMap.TryGetKnob(ccNumber, out var knob))
             {
                 OnKnobRaw?.Invoke(knob, value);
-                OnKnob?.Invoke(knob.channel, knob.row, value);
+                // Gliding, OnKnob fires from Update as the value moves.
+                if (_knobGlide[knob.row - 1, knob.channel - 1].SetTarget(value, _knobGlideSeconds))
+                    OnKnob?.Invoke(knob.channel, knob.row, value);
                 return;
             }
 
             if (MidiMixInputMap.TryGetFader(ccNumber, out var fader))
             {
                 OnFaderRaw?.Invoke(fader, value);
-                if (fader.isMaster)
-                    OnMasterFader?.Invoke(value);
-                else
-                    OnChannelFader?.Invoke(fader.channel, value);
+                int i = fader.isMaster ? 0 : fader.channel;
+                if (_faderGlide[i].SetTarget(value, _faderGlideSeconds))
+                    FireFader(i, value);
             }
         }
 
