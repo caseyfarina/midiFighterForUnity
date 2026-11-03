@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.6.0] — 2026-11-03
+
+### Added
+- **Per-control glide times on `MidiMixRouter`.** `Knob Glide Overrides` (channel, row, seconds) and `Fader Glide Overrides` (channel, 0 = master; seconds) give single controls their own glide; every other control keeps `KnobGlideSeconds` / `FaderGlideSeconds`, and 0 seconds turns one control's glide off. Runtime: `SetKnobGlide`, `SetFaderGlide`, and `GetKnobGlide` / `GetFaderGlide` for the time a control actually uses. Inspector edits apply live in play mode. Out-of-range entries are skipped, not clamped onto another control.
+
 ## [2.5.0] — 2026-11-03
 
 ### Changed

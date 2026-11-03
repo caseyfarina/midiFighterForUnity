@@ -25,7 +25,8 @@ namespace MidiFighter64
     /// All channel arguments are 1-based (1–8). Fader/knob values are 0–1.
     ///
     /// OnKnob, OnChannelFader and OnMasterFader glide to each new value (see
-    /// KnobGlideSeconds / FaderGlideSeconds, on by default), firing once a frame while
+    /// KnobGlideSeconds / FaderGlideSeconds, on by default, and per-control
+    /// overrides), firing once a frame while
     /// they move. The raw events are never smoothed: read them for a stepped selector
     /// or a value passed on as MIDI.
     ///
@@ -55,17 +56,91 @@ namespace MidiFighter64
         [Tooltip("Seconds a fader (channel or master) takes to glide to each new MIDI value. 0 = off. OnFaderRaw is never smoothed.")]
         [SerializeField, Min(0)] float _faderGlideSeconds = 0.08f;
 
-        /// <summary>Glide time for <see cref="OnKnob"/>, in seconds; 0 turns it off.
-        /// Read <see cref="OnKnobRaw"/> for a control that needs the MIDI value itself
-        /// (a stepped selector, a value passed on as MIDI).</summary>
-        public float KnobGlideSeconds  { get => _knobGlideSeconds;  set => _knobGlideSeconds  = Mathf.Max(0f, value); }
+        /// <summary>One knob's own glide time, in place of <see cref="KnobGlideSeconds"/>.</summary>
+        [Serializable]
+        public struct KnobGlide
+        {
+            [Range(1, 8)] public int channel;
+            [Range(1, 3)] public int row;
+            [Min(0)] public float seconds;
+        }
+
+        /// <summary>One fader's own glide time, in place of <see cref="FaderGlideSeconds"/>.</summary>
+        [Serializable]
+        public struct FaderGlide
+        {
+            [Tooltip("1–8, or 0 for the master.")]
+            [Range(0, 8)] public int channel;
+            [Min(0)] public float seconds;
+        }
+
+        [Tooltip("Knobs that glide at their own speed instead of Knob Glide Seconds (0 = off for that knob).")]
+        [SerializeField] KnobGlide[]  _knobGlideOverrides  = Array.Empty<KnobGlide>();
+        [Tooltip("Faders that glide at their own speed instead of Fader Glide Seconds (channel 0 = master; 0 seconds = off).")]
+        [SerializeField] FaderGlide[] _faderGlideOverrides = Array.Empty<FaderGlide>();
+
+        /// <summary>Glide time for <see cref="OnKnob"/>, in seconds; 0 turns it off. A knob
+        /// in the overrides keeps its own. Read <see cref="OnKnobRaw"/> for a control that
+        /// needs the MIDI value itself (a stepped selector, a value passed on as MIDI).</summary>
+        public float KnobGlideSeconds  { get => _knobGlideSeconds;  set { _knobGlideSeconds  = Mathf.Max(0f, value); ResolveGlideTimes(); } }
         /// <summary>Glide time for <see cref="OnChannelFader"/> and <see cref="OnMasterFader"/>,
-        /// in seconds; 0 turns it off. <see cref="OnFaderRaw"/> is never smoothed.</summary>
-        public float FaderGlideSeconds { get => _faderGlideSeconds; set => _faderGlideSeconds = Mathf.Max(0f, value); }
+        /// in seconds; 0 turns it off. A fader in the overrides keeps its own.
+        /// <see cref="OnFaderRaw"/> is never smoothed.</summary>
+        public float FaderGlideSeconds { get => _faderGlideSeconds; set { _faderGlideSeconds = Mathf.Max(0f, value); ResolveGlideTimes(); } }
+
+        /// <summary>The glide time a knob uses: its override, or <see cref="KnobGlideSeconds"/>.</summary>
+        public float GetKnobGlide(int channel, int row) => _knobSeconds[row - 1, channel - 1];
+        /// <summary>The glide time a fader uses (channel 0 = master): its override, or <see cref="FaderGlideSeconds"/>.</summary>
+        public float GetFaderGlide(int channel) => _faderSeconds[channel];
+
+        /// <summary>Gives one knob its own glide time (0 = off), replacing any earlier override.</summary>
+        public void SetKnobGlide(int channel, int row, float seconds)
+        {
+            var e = new KnobGlide { channel = channel, row = row, seconds = Mathf.Max(0f, seconds) };
+            int i = Array.FindIndex(_knobGlideOverrides, o => o.channel == channel && o.row == row);
+            if (i >= 0) _knobGlideOverrides[i] = e;
+            else { Array.Resize(ref _knobGlideOverrides, _knobGlideOverrides.Length + 1); _knobGlideOverrides[^1] = e; }
+            ResolveGlideTimes();
+        }
+
+        /// <summary>Gives one fader (channel 0 = master) its own glide time (0 = off), replacing any earlier override.</summary>
+        public void SetFaderGlide(int channel, float seconds)
+        {
+            var e = new FaderGlide { channel = channel, seconds = Mathf.Max(0f, seconds) };
+            int i = Array.FindIndex(_faderGlideOverrides, o => o.channel == channel);
+            if (i >= 0) _faderGlideOverrides[i] = e;
+            else { Array.Resize(ref _faderGlideOverrides, _faderGlideOverrides.Length + 1); _faderGlideOverrides[^1] = e; }
+            ResolveGlideTimes();
+        }
 
         // [row-1, channel-1], and faders by channel with the master at index 0.
         readonly MidiGlide[,] _knobGlide  = new MidiGlide[MidiMixInputMap.KNOB_ROWS, MidiMixInputMap.CHANNEL_COUNT];
         readonly MidiGlide[]  _faderGlide = new MidiGlide[MidiMixInputMap.CHANNEL_COUNT + 1];
+        // Each control's glide time, shared value plus overrides, so Update reads a table.
+        readonly float[,] _knobSeconds  = new float[MidiMixInputMap.KNOB_ROWS, MidiMixInputMap.CHANNEL_COUNT];
+        readonly float[]  _faderSeconds = new float[MidiMixInputMap.CHANNEL_COUNT + 1];
+
+        void ResolveGlideTimes()
+        {
+            for (int r = 0; r < MidiMixInputMap.KNOB_ROWS; r++)
+                for (int c = 0; c < MidiMixInputMap.CHANNEL_COUNT; c++)
+                    _knobSeconds[r, c] = _knobGlideSeconds;
+            for (int i = 0; i < _faderSeconds.Length; i++) _faderSeconds[i] = _faderGlideSeconds;
+
+            // Out-of-range entries (a half-edited Inspector row) are skipped, not clamped onto another control.
+            if (_knobGlideOverrides != null)
+                foreach (var o in _knobGlideOverrides)
+                    if (o.channel >= 1 && o.channel <= MidiMixInputMap.CHANNEL_COUNT && o.row >= 1 && o.row <= MidiMixInputMap.KNOB_ROWS)
+                        _knobSeconds[o.row - 1, o.channel - 1] = Mathf.Max(0f, o.seconds);
+            if (_faderGlideOverrides != null)
+                foreach (var o in _faderGlideOverrides)
+                    if (o.channel >= 0 && o.channel <= MidiMixInputMap.CHANNEL_COUNT)
+                        _faderSeconds[o.channel] = Mathf.Max(0f, o.seconds);
+        }
+
+        // Live-tunable from the Inspector in play mode; only refills the table.
+        void OnValidate() => ResolveGlideTimes();
+        void Awake() => ResolveGlideTimes();
 
         // ------------------------------------------------------------------ //
         // Public events
@@ -181,11 +256,11 @@ namespace MidiFighter64
 
             for (int r = 0; r < MidiMixInputMap.KNOB_ROWS; r++)
                 for (int c = 0; c < MidiMixInputMap.CHANNEL_COUNT; c++)
-                    if (_knobGlide[r, c].Step(_knobGlideSeconds, dt))
+                    if (_knobGlide[r, c].Step(_knobSeconds[r, c], dt))
                         OnKnob?.Invoke(c + 1, r + 1, _knobGlide[r, c].Value);
 
             for (int i = 0; i < _faderGlide.Length; i++)
-                if (_faderGlide[i].Step(_faderGlideSeconds, dt))
+                if (_faderGlide[i].Step(_faderSeconds[i], dt))
                     FireFader(i, _faderGlide[i].Value);
         }
 
@@ -214,7 +289,7 @@ namespace MidiFighter64
             {
                 OnKnobRaw?.Invoke(knob, value);
                 // Gliding, OnKnob fires from Update as the value moves.
-                if (_knobGlide[knob.row - 1, knob.channel - 1].SetTarget(value, _knobGlideSeconds))
+                if (_knobGlide[knob.row - 1, knob.channel - 1].SetTarget(value, _knobSeconds[knob.row - 1, knob.channel - 1]))
                     OnKnob?.Invoke(knob.channel, knob.row, value);
                 return;
             }
@@ -223,7 +298,7 @@ namespace MidiFighter64
             {
                 OnFaderRaw?.Invoke(fader, value);
                 int i = fader.isMaster ? 0 : fader.channel;
-                if (_faderGlide[i].SetTarget(value, _faderGlideSeconds))
+                if (_faderGlide[i].SetTarget(value, _faderSeconds[i]))
                     FireFader(i, value);
             }
         }
