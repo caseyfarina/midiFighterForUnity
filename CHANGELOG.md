@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.4.1] — 2026-11-03
+
+### Removed
+- **Radial 1 no longer draws the MIDI Mix channel numbers** (`1`–`8` outside the toggle ring). The slices already read by position.
+
 ## [2.4.0] — 2026-10-24
 
 ### Added

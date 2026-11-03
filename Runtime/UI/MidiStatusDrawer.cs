@@ -1328,7 +1328,6 @@ namespace MidiFighter64
         const float MasterArcStroke  = 0.0283f;   // thickest of the three
         const float ToggleRingRadius = 0.8522f;
         const float ToggleSize       = 0.0261f;
-        const float ChannelLabelRadius = 0.9043f;
 
         /// <summary>Arc length of one channel's slice. The slice is 45° wide; the arc
         /// is 39°, leaving a 6° gap so neighbouring channels read apart.</summary>
@@ -1457,15 +1456,6 @@ namespace MidiFighter64
                                mid + TogglePairOffsetDeg, ToggleSize * R);
                     view.recArms[ch] = rec;
                     square.Add(rec);
-
-                    // Channel caption, outside the toggle ring. Given a generous box
-                    // and centred text, since a label's own width isn't known here.
-                    var label = MakeLabel($"{ch + 1}", CaptionFontSize);
-                    float labelBox = ToggleSize * R * 4f;
-                    PlacePolar(label, cx, cy, ChannelLabelRadius * R, mid, labelBox);
-                    label.style.height = StyleKeyword.Auto;
-                    label.style.unityTextAlign = TextAnchor.MiddleCenter;
-                    square.Add(label);
                 }
 
                 // Master: the only continuous ring among segmented arcs, which is what
